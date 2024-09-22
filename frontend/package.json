@@ -1,0 +1,24 @@
+{
+  "name": "frontend",
+  "version": "1.0.0",
+  "description": "Front end for DAO Chatbot",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mxiid/DAOChat.git"
+  },
+  "author": "Muid",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mxiid/DAOChat/issues"
+  },
+  "homepage": "https://github.com/mxiid/DAOChat#readme",
+  "dependencies": {
+    "@material-ui/core": "^4.12.4",
+    "@material-ui/icons": "^4.11.3",
+    "axios": "^1.7.7"
+  }
+}
