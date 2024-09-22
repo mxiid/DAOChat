@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")
-    MILVUS_PORT = int(os.getenv("MILVUS_PORT", 19530))
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    # Add other configuration variables as needed
+    DOCUMENTS_PATH = os.getenv("DOCUMENTS_PATH", r"C:\Users\abdul\Downloads\DAO Proptech\DAOChat\data")
+    FAISS_INDEX_PATH = os.getenv("FAISS_INDEX_PATH", "faiss_index")
