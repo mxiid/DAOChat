@@ -1,10 +1,10 @@
 import React from 'react';
-import Chat from './components/Chat';
+import ChatbotPage from './components/ChatbotPage.tsx';
 
 function App() {
   return (
     <div className="App">
-      <Chat />
+      <ChatbotPage />
     </div>
   );
 }
