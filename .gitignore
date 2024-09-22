@@ -200,3 +200,5 @@ milvus/logs/
 *.pid
 *.seed
 *.pid.lock
+
+data/
