@@ -202,3 +202,4 @@ milvus/logs/
 *.pid.lock
 
 data/
+faiss_index/
