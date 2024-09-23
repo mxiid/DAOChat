@@ -4,10 +4,16 @@ import { Button } from "./ui/button.tsx"
 import { Input } from "./ui/input.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
 import { SendIcon, BotIcon, UserIcon, Loader2Icon } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 interface Message {
   role: 'user' | 'bot';
   content: string;
+}
+
+interface SuggestQuestionsRequest {
+  context: string;
 }
 
 export default function ChatbotPage() {
@@ -16,12 +22,8 @@ export default function ChatbotPage() {
   ])
   const [input, setInput] = useState('')
   const [isThinking, setIsThinking] = useState(false)
-  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([
-    "How do I start investing?",
-    "What are the benefits of digital real estate investment?",
-    "How is my investment secured?",
-    "Can you explain value-based pricing?"
-  ])
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([])
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
 
   const handleSend = useCallback(async () => {
     if (input.trim() && !isThinking) {
@@ -41,7 +43,7 @@ export default function ChatbotPage() {
         const data = await response.json()
         const newBotMessage: Message = { role: 'bot', content: data.answer };
         setMessages(prev => [...prev, newBotMessage]);
-        generateSuggestedQuestions(data.answer)
+        await generateSuggestedQuestions(data.answer)
       } catch (error) {
         console.error('Error:', error)
         const errorMessage: Message = { role: 'bot', content: 'Sorry, an error occurred. Please try again.' };
@@ -53,27 +55,32 @@ export default function ChatbotPage() {
   }, [input, isThinking])
 
   const generateSuggestedQuestions = async (lastAnswer: string) => {
+    setIsLoadingSuggestions(true);
     try {
+      const request: SuggestQuestionsRequest = { context: lastAnswer };
       const response = await fetch('http://localhost:8000/suggest_questions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ context: lastAnswer }),
+        body: JSON.stringify(request),
       })
+      if (!response.ok) {
+        throw new Error('Failed to fetch suggested questions');
+      }
       const data = await response.json()
-      setSuggestedQuestions(data.questions || [])
+      setSuggestedQuestions(data.suggested_questions || [])
     } catch (error) {
       console.error('Error generating suggested questions:', error)
       setSuggestedQuestions([])
+    } finally {
+      setIsLoadingSuggestions(false);
     }
   }
 
   const handleSuggestedQuestion = async (question: string) => {
-    if (!isThinking) {
-      setInput(question)
-      await handleSend()
-    }
+    setInput(question);
+    await handleSend();
   }
 
   useEffect(() => {
@@ -101,7 +108,40 @@ export default function ChatbotPage() {
             <div className={`rounded-lg p-3 max-w-[70%] ${
               message.role === 'user' ? 'bg-[#ADFF2F] text-black' : 'bg-white border border-gray-200'
             }`}>
-              {message.content}
+              {message.role === 'user' ? (
+                message.content
+              ) : (
+                <ReactMarkdown 
+                  remarkPlugins={[remarkGfm]}
+                  className="prose prose-sm max-w-none"
+                  components={{
+                    a: ({node, ...props}) => <a {...props} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer">{props.children}</a>,
+                    p: ({node, ...props}) => <p {...props} className="mb-2" />,
+                    ul: ({node, ...props}) => <ul {...props} className="list-disc list-inside mb-2" />,
+                    ol: ({node, ...props}) => <ol {...props} className="list-decimal list-inside mb-2" />,
+                    li: ({node, ...props}) => <li {...props} className="mb-1" />,
+                    h1: ({node, ...props}) => <h1 {...props} className="text-xl font-bold mb-2">{props.children}</h1>,
+                    h2: ({node, ...props}) => <h2 {...props} className="text-lg font-bold mb-2">{props.children}</h2>,
+                    h3: ({node, ...props}) => <h3 {...props} className="text-md font-bold mb-2">{props.children}</h3>,
+                    code: ({node, className, children, ...props}) => {
+                      const match = /language-(\w+)/.exec(className || '')
+                      return match ? (
+                        <pre className="bg-gray-100 rounded p-2 mb-2 overflow-x-auto">
+                          <code className={`language-${match[1]}`} {...props}>
+                            {children}
+                          </code>
+                        </pre>
+                      ) : (
+                        <code {...props} className="bg-gray-100 rounded px-1 py-0.5">
+                          {children}
+                        </code>
+                      )
+                    },
+                  }}
+                >
+                  {message.content}
+                </ReactMarkdown>
+              )}
             </div>
             {message.role === 'user' && <UserIcon className="w-6 h-6 ml-2 text-[#ADFF2F]" />}
           </div>
@@ -119,18 +159,24 @@ export default function ChatbotPage() {
       {/* Input Area */}
       <div className="p-4 bg-white border-t border-gray-200">
         <div className="flex flex-wrap gap-2 mb-4">
-          {suggestedQuestions.map((question, index) => (
-            <Button
-              key={index}
-              variant="outline"
-              size="sm"
-              onClick={() => handleSuggestedQuestion(question)}
-              className="text-xs bg-white hover:bg-[#ADFF2F] hover:text-black transition-colors"
-              disabled={isThinking}
-            >
-              {question}
-            </Button>
-          ))}
+          {isLoadingSuggestions ? (
+            <div className="text-sm text-gray-500">Loading suggestions...</div>
+          ) : suggestedQuestions.length > 0 ? (
+            suggestedQuestions.map((question, index) => (
+              <Button
+                key={index}
+                variant="outline"
+                size="sm"
+                onClick={() => handleSuggestedQuestion(question)}
+                className="text-xs bg-white hover:bg-[#ADFF2F] hover:text-black transition-colors"
+                disabled={isThinking}
+              >
+                {question}
+              </Button>
+            ))
+          ) : (
+            <div className="text-sm text-gray-500">No suggested questions available</div>
+          )}
         </div>
         <div className="flex space-x-2">
           <Input
