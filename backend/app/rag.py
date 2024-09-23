@@ -1,68 +1,115 @@
+from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
-from langchain.chains import RetrievalQA
-from langchain_openai import OpenAIEmbeddings, OpenAI
-from langchain.vectorstores import FAISS
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory import ConversationBufferMemory
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import PyPDFLoader, CSVLoader
+from langchain.schema import HumanMessage
 from .config import Config
+import os
+import logging
+import openai
+
+logger = logging.getLogger(__name__)
 
 class RAG:
     def __init__(self):
-        self.embeddings = OpenAIEmbeddings(openai_api_key=Config.OPENAI_API_KEY)
-        self.llm = OpenAI(temperature=0, openai_api_key=Config.OPENAI_API_KEY)
-        self.qa_chain = self._create_qa_chain()
-
-    def _create_qa_chain(self):
         try:
-            vector_store = FAISS.load_local(Config.FAISS_INDEX_PATH, self.embeddings)
-            print(f"Loaded existing FAISS index from {Config.FAISS_INDEX_PATH}")
-        except:
-            vector_store = FAISS.from_texts(["Initial document"], self.embeddings)
-            vector_store.save_local(Config.FAISS_INDEX_PATH)
-            print(f"Created new FAISS index at {Config.FAISS_INDEX_PATH}")
+            self.embeddings = OpenAIEmbeddings()
+            self.vectordb = self._create_or_load_vectordb()
+            self.llm = ChatOpenAI(temperature=0, model_name='gpt-4')
+            self.prompt_template = self._create_prompt_template()
+            self.memory = ConversationBufferMemory(
+                memory_key="chat_history",
+                return_messages=True,
+                output_key="answer"
+            )
+        except Exception as e:
+            logger.error(f"Error initializing RAG: {str(e)}", exc_info=True)
+            raise
 
-        prompt_template = PromptTemplate(
-            template="""You are a knowledgeable AI assistant for DAO Proptech, acting as a wealth manager and a sales representative to guide users through our investment offerings. Your task is to provide clear, concise, yet informative answers based on the following context:
+    def _create_or_load_vectordb(self):
+        if os.path.exists(Config.FAISS_INDEX_PATH):
+            try:
+                vectordb = FAISS.load_local(Config.FAISS_INDEX_PATH, self.embeddings, allow_dangerous_deserialization=True)
+                print(f"Loaded existing FAISS index from {Config.FAISS_INDEX_PATH}")
+                return vectordb
+            except Exception as e:
+                print(f"Error loading existing index: {e}")
+                print("Creating new index...")
 
-            {context}
+        # If loading fails or index doesn't exist, create a new one
+        documents = []
+        for filename in os.listdir(Config.DOCUMENTS_PATH):
+            file_path = os.path.join(Config.DOCUMENTS_PATH, filename)
+            if filename.endswith('.pdf'):
+                loader = PyPDFLoader(file_path)
+                documents.extend(loader.load())
+            elif filename.endswith('.csv'):
+                loader = CSVLoader(file_path)
+                documents.extend(loader.load())
 
-            Guidelines for answering:
-            1. Keep the responses suitable for a chat bubble display.
-            2. Focus on the most relevant information to directly answer the question.
-            3. Use bullet points or short paragraphs for easy readability.
-            4. If a complex topic requires a longer explanation, offer a concise summary and ask if the user would like more details.
-            5. For investment-related questions, briefly mention key factors like potential returns, risks, and alignment with DAO Proptech's goals.
-            6. Use specific examples or data points when they significantly enhance the answer without making it too long.
-            7. Include relevant contact information only when directly applicable to the user's query or when they explicitly ask for it. Use the following details as appropriate:
-            - Email: info@daoproptech.com
-            - Phone: +923143267767
-            - Website: https://daoproptech.com
-            - Platform: https://id.daoproptech.com
-            - Urban Dwellings: https://daoproptech.com/urban-dwellings/
-            8. Subtly guide users through the sales and marketing funnel, building trust while creating urgency.
-            9. Emphasize the value and potential of high-ticket items, such as tokenized real estate (expected ticket price: $2,500).
-            10. If you don't have enough information to answer, briefly explain what you know and what's unclear.
-            11. If the question is unrelated to DAO Proptech, politely redirect the user to ask about DAO Proptech investment opportunities.
+        if not documents:
+            raise ValueError(f"No PDF or CSV documents found in {Config.DOCUMENTS_PATH}")
+        
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        texts = text_splitter.split_documents(documents)
+        if not texts:
+            raise ValueError("No text chunks created from documents")
+        
+        vectordb = FAISS.from_documents(texts, self.embeddings)
+        vectordb.save_local(Config.FAISS_INDEX_PATH)
+        print(f"Created new FAISS index at {Config.FAISS_INDEX_PATH}")
+        return vectordb
 
-            Remember, your goal is to increase user confidence in DAO Proptech's offerings and guide them towards making informed investment decisions. Provide contact information or links only when directly relevant to the user's query or when explicitly requested.
+    def _create_prompt_template(self):
+        template = """You are a knowledgeable AI assistant for DAO Proptech, specializing in real estate investments. Use the following pieces of context to answer the human's question. If you don't know the answer, just say that you don't know, don't try to make up an answer.
 
-            Human: {question}
-            AI Assistant: Let me provide a concise and informative answer based on the information available:""",
-            input_variables=["context", "question"]
-        )
+        Context: {context}
 
-        return RetrievalQA.from_chain_type(
-            llm=self.llm,
-            chain_type="stuff",
-            retriever=vector_store.as_retriever(search_kwargs={"k": 4}),
-            return_source_documents=True,
-            chain_type_kwargs={"prompt": prompt_template}
-        )
+        Current conversation:
+        {chat_history}
+        Human: {question}
+        AI Assistant: """
+        return PromptTemplate(template=template, input_variables=["context", "chat_history", "question"])
 
-    def query(self, question: str) -> str:
-        result = self.qa_chain({"query": question})
-        return result["result"]
+    async def query(self, question: str) -> str:
+        try:
+            qa_chain = ConversationalRetrievalChain.from_llm(
+                llm=self.llm,
+                retriever=self.vectordb.as_retriever(search_kwargs={"k": 4}),
+                memory=self.memory,
+                combine_docs_chain_kwargs={"prompt": self.prompt_template},
+                return_source_documents=True,
+                return_generated_question=True,
+                output_key="answer"  # Add this line
+            )
+            result = await qa_chain.ainvoke({"question": question})
+            return result['answer']
+        except openai.error.APIConnectionError as e:
+            logger.error(f"OpenAI API connection error: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail="OpenAI API connection error. Please try again later.")
+        except Exception as e:
+            logger.error(f"Error in query method: {str(e)}", exc_info=True)
+            raise
+
+    async def generate_questions(self, context: str) -> list[str]:
+        try:
+            prompt = f"Based on the following context, generate a list of relevant questions:\n\nContext: {context}\n\nQuestions:"
+            response = await self.llm.agenerate(prompt)  # Pass the prompt as a string
+            questions = response.generations[0][0].text.strip().split('\n')
+            return [q.strip() for q in questions if q.strip()]
+        except openai.error.APIConnectionError as e:
+            logger.error(f"OpenAI API connection error: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail="OpenAI API connection error. Please try again later.")
+        except Exception as e:
+            logger.error(f"Error in generate_questions method: {str(e)}", exc_info=True)
+            raise
 
     def add_texts(self, texts: list[str]):
-        vector_store = FAISS.load_local(Config.FAISS_INDEX_PATH, self.embeddings)
-        vector_store.add_texts(texts)
-        vector_store.save_local(Config.FAISS_INDEX_PATH)
-        self.qa_chain = self._create_qa_chain()  # Recreate the chain with updated index
+        new_db = FAISS.from_texts(texts, self.embeddings)
+        self.vectordb.merge_from(new_db)
+        self.vectordb.save_local(Config.FAISS_INDEX_PATH)
+        print(f"Added {len(texts)} new documents to the FAISS index")
