@@ -21,7 +21,7 @@ providers:
 certificatesResolvers:
   myresolver:
     acme:
-      email: your-email@example.com
+      email: muid@daoproptech.com
       storage: /letsencrypt/acme.json
       tlsChallenge: {}
 
