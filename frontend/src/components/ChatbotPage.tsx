@@ -1,12 +1,12 @@
 import * as React from 'react'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from "./ui/button.tsx"
 import { Input } from "./ui/input.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
 import { SendIcon, BotIcon, UserIcon, Loader2Icon } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-
+import { ImageIcon, SearchIcon, FileTextIcon, PenToolIcon, SunIcon, MoonIcon } from './Icons.tsx'
 interface Message {
   role: 'user' | 'bot';
   content: string;
@@ -109,7 +109,7 @@ export default function ChatbotPage() {
             <BotIcon className="mr-2" />
             DAO PropTech Assistant
           </div>
-          <Button variant="outline" size="icon" onClick={toggleTheme} className="text-white border-white hover:bg-white/20">
+          <Button variant="outline" size="sm" onClick={toggleTheme} className="text-white border-white hover:bg-white/20">
             {isDarkMode ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
           </Button>
         </div>
