@@ -200,6 +200,3 @@ milvus/logs/
 *.pid
 *.seed
 *.pid.lock
-
-data/
-faiss_index/
