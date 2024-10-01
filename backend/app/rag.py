@@ -11,6 +11,9 @@ from .config import Config
 import os
 import logging
 import openai
+import csv
+import chardet
+from langchain_core.documents import Document
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +43,6 @@ class RAG:
                 print(f"Error loading existing index: {e}")
                 print("Creating new index...")
 
-        # If loading fails or index doesn't exist, create a new one
         documents = []
         for filename in os.listdir(Config.DOCUMENTS_PATH):
             file_path = os.path.join(Config.DOCUMENTS_PATH, filename)
@@ -48,21 +50,40 @@ class RAG:
                 loader = PyPDFLoader(file_path)
                 documents.extend(loader.load())
             elif filename.endswith('.csv'):
-                loader = CSVLoader(file_path)
-                documents.extend(loader.load())
+                documents.extend(self._load_csv(file_path))
 
         if not documents:
-            raise ValueError(f"No PDF or CSV documents found in {Config.DOCUMENTS_PATH}")
-        
+            raise ValueError(f"No documents were successfully loaded from {Config.DOCUMENTS_PATH}")
+
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         texts = text_splitter.split_documents(documents)
-        if not texts:
-            raise ValueError("No text chunks created from documents")
         
         vectordb = FAISS.from_documents(texts, self.embeddings)
         vectordb.save_local(Config.FAISS_INDEX_PATH)
         print(f"Created new FAISS index at {Config.FAISS_INDEX_PATH}")
         return vectordb
+
+    def _load_csv(self, file_path):
+        # Detect the file encoding
+        with open(file_path, 'rb') as file:
+            raw = file.read()
+            result = chardet.detect(raw)
+            encoding = result['encoding']
+
+        documents = []
+        try:
+            with open(file_path, 'r', encoding=encoding) as csvfile:
+                csv_reader = csv.DictReader(csvfile)
+                for row in csv_reader:
+                    # Convert the row to a string representation
+                    content = ', '.join([f"{k}: {v}" for k, v in row.items()])
+                    doc = Document(page_content=content, metadata={"source": file_path})
+                    documents.append(doc)
+            print(f"Successfully loaded {file_path} with {encoding} encoding")
+        except Exception as e:
+            print(f"Error loading {file_path}: {str(e)}")
+
+        return documents
 
     def _create_prompt_template(self):
         template = """You are a knowledgeable AI assistant for DAO Proptech, specializing in real estate investments. Use the following pieces of context to answer the human's question. If you don't know the answer, just say that you don't know, don't try to make up an answer.
