@@ -199,3 +199,6 @@ milvus/logs/
 *.pid
 *.seed
 *.pid.lock
+
+.env
+letsencrypt/
