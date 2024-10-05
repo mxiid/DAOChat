@@ -13,7 +13,17 @@ import logging
 import openai
 import csv
 import chardet
+from io import StringIO
 from langchain_core.documents import Document
+from langchain.callbacks import AsyncIteratorCallbackHandler
+import asyncio
+import tiktoken
+
+# At the top of your file, after imports
+os.environ['TIKTOKEN_CACHE_DIR'] = '/app/tiktoken'
+
+# Initialize tiktoken (this will use the files in the specified cache directory)
+tiktoken.get_encoding('cl100k_base')
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +31,8 @@ class RAG:
     def __init__(self):
         try:
             self.embeddings = OpenAIEmbeddings()
-            self.vectordb = self._create_or_load_vectordb()
-            self.llm = ChatOpenAI(temperature=0, model_name='gpt-4')
+            self.vectordb = self._load_vectordb()
+            self.llm = ChatOpenAI(temperature=0, model_name='gpt-4o')
             self.prompt_template = self._create_prompt_template()
             self.memory = ConversationBufferMemory(
                 memory_key="chat_history",
@@ -33,7 +43,7 @@ class RAG:
             logger.error(f"Error initializing RAG: {str(e)}", exc_info=True)
             raise
 
-    def _create_or_load_vectordb(self):
+    def _load_vectordb(self):
         if os.path.exists(Config.FAISS_INDEX_PATH):
             try:
                 vectordb = FAISS.load_local(Config.FAISS_INDEX_PATH, self.embeddings, allow_dangerous_deserialization=True)
@@ -41,59 +51,36 @@ class RAG:
                 return vectordb
             except Exception as e:
                 print(f"Error loading existing index: {e}")
-                print("Creating new index...")
-
-        documents = []
-        for filename in os.listdir(Config.DOCUMENTS_PATH):
-            file_path = os.path.join(Config.DOCUMENTS_PATH, filename)
-            if filename.endswith('.pdf'):
-                loader = PyPDFLoader(file_path)
-                documents.extend(loader.load())
-            elif filename.endswith('.csv'):
-                documents.extend(self._load_csv(file_path))
-
-        if not documents:
-            raise ValueError(f"No documents were successfully loaded from {Config.DOCUMENTS_PATH}")
-
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        texts = text_splitter.split_documents(documents)
-        
-        vectordb = FAISS.from_documents(texts, self.embeddings)
-        vectordb.save_local(Config.FAISS_INDEX_PATH)
-        print(f"Created new FAISS index at {Config.FAISS_INDEX_PATH}")
-        return vectordb
-
-    def _load_csv(self, file_path):
-        # Detect the file encoding
-        with open(file_path, 'rb') as file:
-            raw = file.read()
-            result = chardet.detect(raw)
-            encoding = result['encoding']
-
-        documents = []
-        try:
-            with open(file_path, 'r', encoding=encoding) as csvfile:
-                csv_reader = csv.DictReader(csvfile)
-                for row in csv_reader:
-                    # Convert the row to a string representation
-                    content = ', '.join([f"{k}: {v}" for k, v in row.items()])
-                    doc = Document(page_content=content, metadata={"source": file_path})
-                    documents.append(doc)
-            print(f"Successfully loaded {file_path} with {encoding} encoding")
-        except Exception as e:
-            print(f"Error loading {file_path}: {str(e)}")
-
-        return documents
+                raise
+        else:
+            raise FileNotFoundError(f"FAISS index not found at {Config.FAISS_INDEX_PATH}")
 
     def _create_prompt_template(self):
-        template = """You are a knowledgeable AI assistant for DAO Proptech, specializing in real estate investments. Use the following pieces of context to answer the human's question. If you don't know the answer, just say that you don't know, don't try to make up an answer.
+        template = """You are an expert AI assistant for DAO Proptech, embodying the role of a knowledgeable wealth manager and investment advisor. Your mission is to guide users through DAO Proptech's innovative real estate investment opportunities, leveraging the following context to provide insightful, engaging, and persuasive responses:
 
         Context: {context}
 
         Current conversation:
         {chat_history}
+
+        Guidelines for your responses:
+        1. Adopt a friendly, professional tone akin to a trusted wealth manager or investment advisor.
+        2. Provide comprehensive answers that showcase your deep understanding of DAO Proptech's offerings and the real estate market.
+        3. When discussing projects, mention all relevant DAO Proptech initiatives, even if not explicitly asked. Use the file names in the knowledge base as cues for available projects.
+        4. Balance detail with conciseness. Use bullet points or short paragraphs for clarity when appropriate.
+        5. Highlight the unique value propositions of DAO Proptech's investment opportunities, emphasizing tokenization, fractional ownership, and potential returns.
+        6. Subtly guide users through the sales funnel by creating interest, addressing potential concerns, and encouraging next steps.
+        7. For complex topics, provide a concise summary followed by more detailed information, maintaining engagement.
+        8. Always include relevant contact information when it's required (e.g., "For more details on [Project Name], please contact our investment team at customersupport@daoproptech.com or message us on WhatsApp at +92 310 0000326").
+        9. Use specific examples, data points, or project details to substantiate your answers and build credibility.
+        10. If information is limited or unclear, acknowledge this transparently while highlighting what is known, and offer to connect the user with a human expert for more information.
+        11. For questions unrelated to DAO Proptech, briefly acknowledge the query and skillfully redirect the conversation back to DAO Proptech's investment opportunities.
+        12. Emphasize the innovative nature of DAO Proptech's approach, particularly in relation to tokenization and blockchain technology in real estate.
+
+        Remember, your goal is to inform, excite, and guide potential investors towards making confident decisions about DAO Proptech's offerings. Blend expertise with persuasion, always maintaining a helpful and trustworthy demeanor.
+
         Human: {question}
-        AI Assistant: """
+        AI Wealth Manager:"""
         return PromptTemplate(template=template, input_variables=["context", "chat_history", "question"])
 
     async def query(self, question: str) -> str:
@@ -105,13 +92,10 @@ class RAG:
                 combine_docs_chain_kwargs={"prompt": self.prompt_template},
                 return_source_documents=True,
                 return_generated_question=True,
-                output_key="answer"  # Add this line
+                output_key="answer"
             )
             result = await qa_chain.ainvoke({"question": question})
             return result['answer']
-        except openai.error.APIConnectionError as e:
-            logger.error(f"OpenAI API connection error: {str(e)}", exc_info=True)
-            raise HTTPException(status_code=500, detail="OpenAI API connection error. Please try again later.")
         except Exception as e:
             logger.error(f"Error in query method: {str(e)}", exc_info=True)
             raise
@@ -129,8 +113,49 @@ class RAG:
             logger.error(f"Error in generate_questions method: {str(e)}", exc_info=True)
             raise
 
+    async def stream_query(self, question: str):
+        callback = AsyncIteratorCallbackHandler()
+        streaming_llm = ChatOpenAI(
+            streaming=True,
+            callbacks=[callback],
+            temperature=0,
+            model_name='gpt-4'
+        )
+
+        qa_chain = ConversationalRetrievalChain.from_llm(
+            llm=streaming_llm,
+            retriever=self.vectordb.as_retriever(search_kwargs={"k": 4}),
+            memory=self.memory,
+            combine_docs_chain_kwargs={"prompt": self.prompt_template},
+            return_source_documents=True,
+            return_generated_question=True,
+        )
+
+        try:
+            task = asyncio.create_task(qa_chain.ainvoke({"question": question}))
+            async for token in callback.aiter():
+                yield token
+            await task  # Ensure the task completes
+        except Exception as e:
+            logger.error(f"Error in stream_query: {str(e)}", exc_info=True)
+            yield "An error occurred while processing your request."
+
     def add_texts(self, texts: list[str]):
         new_db = FAISS.from_texts(texts, self.embeddings)
         self.vectordb.merge_from(new_db)
         self.vectordb.save_local(Config.FAISS_INDEX_PATH)
         print(f"Added {len(texts)} new documents to the FAISS index")
+
+# Create an instance of the RAG class
+rag_instance = RAG()
+
+# Define the functions to be used in routes
+async def ask_question(question: str) -> str:
+    return await rag_instance.query(question)
+
+async def suggest_questions(context: str) -> list[str]:
+    return await rag_instance.generate_questions(context)
+
+# You can also add a function to add new texts if needed
+def add_texts(texts: list[str]):
+    rag_instance.add_texts(texts)
