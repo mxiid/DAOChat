@@ -1,166 +1,163 @@
 import * as React from 'react'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, lazy, Suspense } from 'react'
 import { Button } from "./ui/button.tsx"
 import { Input } from "./ui/input.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
-import { SendIcon, BotIcon, UserIcon, Loader2Icon } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { ImageIcon, SearchIcon, FileTextIcon, PenToolIcon, SunIcon, MoonIcon } from './Icons.tsx'
+import { SendIcon, BotIcon, UserIcon, Loader2Icon, SunIcon, MoonIcon } from 'lucide-react'
+import axios from 'axios'
+
+const ReactMarkdown = lazy(() => import('react-markdown'))
+
 interface Message {
   role: 'user' | 'bot';
   content: string;
 }
 
-interface SuggestQuestionsRequest {
-  context: string;
+const staticSuggestedQuestions = [
+  "What is DAO PropTech?",
+  "How does real estate tokenization work?",
+  "What are the benefits of investing through DAO PropTech?",
+  "Can you explain the concept of fractional ownership?"
+];
+
+const useTheme = () => {
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('theme') === 'dark'
+    }
+    return true
+  })
+
+  const toggleTheme = useCallback(() => {
+    const newTheme = !isDarkMode
+    setIsDarkMode(newTheme)
+    localStorage.setItem('theme', newTheme ? 'dark' : 'light')
+  }, [isDarkMode])
+
+  return { isDarkMode, toggleTheme }
 }
 
-export default function ChatbotPage() {
+const useChatbot = () => {
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'bot', content: 'Hello! How can I assist you with real estate investments today?' }
+    { role: 'bot', content: "Welcome to DAO PropTech's AI Investment Advisor! How can I assist you with our real estate offerings today?" }
   ])
   const [input, setInput] = useState('')
   const [isThinking, setIsThinking] = useState(false)
-  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([])
-  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
-  const [isDarkMode, setIsDarkMode] = useState(true)
+  const [showSuggestedQuestions, setShowSuggestedQuestions] = useState(true)
+
+  const handleSendMessage = useCallback(async (message: string) => {
+    if (message.trim() === '' || isThinking) return;
+
+    const newUserMessage: Message = { role: 'user', content: message.trim() };
+    setMessages(prev => [...prev, newUserMessage]);
+    setInput('');
+    setIsThinking(true);
+    setShowSuggestedQuestions(false);
+
+    try {
+      const response = await axios.post('/api/ask', { text: message });
+
+      if (response.data && response.data.answer) {
+        const botMessage: Message = { role: 'bot', content: response.data.answer };
+        setMessages(prev => [...prev, botMessage]);
+      } else {
+        throw new Error('Unexpected response format');
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorMessage: Message = { role: 'bot', content: 'Sorry, I encountered an error. Please try again.' };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsThinking(false);
+    }
+  }, [isThinking]);
+
+  return { messages, input, setInput, isThinking, showSuggestedQuestions, handleSendMessage }
+}
+
+const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message, isDarkMode: boolean }) => (
+  <div className={`flex items-start mb-4 ${message.role === 'user' ? 'justify-end' : ''}`}>
+    {message.role === 'bot' && <BotIcon className="w-5 h-5 sm:w-6 sm:h-6 mr-2 text-[#00FFFF] flex-shrink-0" />}
+    <div className={`rounded-lg p-2 sm:p-3 max-w-[80%] ${message.role === 'user'
+        ? 'bg-[#ADFF2F] text-black'
+        : isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
+      }`}>
+      {message.role === 'user' ? (
+        <p className="text-sm sm:text-base break-words">{message.content}</p>
+      ) : (
+        <Suspense fallback={<div>Loading...</div>}>
+          <ReactMarkdown
+            remarkPlugins={[]}
+            className={`prose prose-sm max-w-none break-words ${isDarkMode ? 'dark' : ''}`}
+            components={{
+              a: ({ node, ...props }) => <a {...props} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer">{props.children}</a>,
+              p: ({ node, ...props }) => <p {...props} className={`mb-2 text-sm sm:text-base ${isDarkMode ? 'text-white' : 'text-black'}`} />,
+              ul: ({ node, ...props }) => <ul {...props} className="list-disc list-inside mb-2" />,
+              ol: ({ node, ...props }) => <ol {...props} className="list-decimal list-inside mb-2" />,
+              li: ({ node, ...props }) => <li {...props} className={`mb-1 ${isDarkMode ? 'text-white' : 'text-black'}`} />,
+              h1: ({ node, ...props }) => <h1 {...props} className={`text-xl font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-black'}`}>{props.children}</h1>,
+              h2: ({ node, ...props }) => <h2 {...props} className={`text-lg font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-black'}`}>{props.children}</h2>,
+              h3: ({ node, ...props }) => <h3 {...props} className={`text-md font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-black'}`}>{props.children}</h3>,
+              code: ({ node, className, children, ...props }) => {
+                const match = /language-(\w+)/.exec(className || '')
+                return match ? (
+                  <pre className="bg-gray-100 rounded p-2 mb-2 overflow-x-auto">
+                    <code className={`language-${match[1]}`} {...props}>
+                      {children}
+                    </code>
+                  </pre>
+                ) : (
+                  <code {...props} className={`bg-gray-100 rounded px-1 py-0.5 ${isDarkMode ? 'text-black' : ''}`}>
+                    {children}
+                  </code>
+                )
+              },
+            }}
+          >
+            {message.content}
+          </ReactMarkdown>
+        </Suspense>
+      )}
+    </div>
+    {message.role === 'user' && <UserIcon className="w-5 h-5 sm:w-6 sm:h-6 ml-2 text-[#ADFF2F] flex-shrink-0" />}
+  </div>
+))
+
+export default function ChatbotPage() {
+  const { isDarkMode, toggleTheme } = useTheme()
+  const { messages, input, setInput, isThinking, showSuggestedQuestions, handleSendMessage } = useChatbot()
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const defaultSuggestedQuestions = [
-    { icon: <ImageIcon className="w-6 h-6" />, text: "Show investment opportunities" },
-    { icon: <SearchIcon className="w-6 h-6" />, text: "Explain value-based pricing" },
-    { icon: <FileTextIcon className="w-6 h-6" />, text: "Summarize market trends" },
-    { icon: <PenToolIcon className="w-6 h-6" />, text: "Calculate potential returns" },
-  ]
-
-  useEffect(() => {
+  React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  const handleSend = useCallback(async () => {
-    if (input.trim() && !isThinking) {
-      const newUserMessage: Message = { role: 'user', content: input.trim() };
-      setMessages(prev => [...prev, newUserMessage]);
-      setInput('');
-      setIsThinking(true);
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInput(e.target.value);
+  };
 
-      try {
-        const response = await fetch('http://localhost:8000/ask', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ text: input.trim() }),
-        })
-        const data = await response.json()
-        const newBotMessage: Message = { role: 'bot', content: data.answer };
-        setMessages(prev => [...prev, newBotMessage]);
-        await generateSuggestedQuestions(data.answer)
-      } catch (error) {
-        console.error('Error:', error)
-        const errorMessage: Message = { role: 'bot', content: 'Sorry, an error occurred. Please try again.' };
-        setMessages(prev => [...prev, errorMessage]);
-      } finally {
-        setIsThinking(false);
-      }
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !isThinking) {
+      handleSendMessage(input);
     }
-  }, [input, isThinking])
-
-  const generateSuggestedQuestions = async (lastAnswer: string) => {
-    setIsLoadingSuggestions(true);
-    try {
-      const request: SuggestQuestionsRequest = { context: lastAnswer };
-      const response = await fetch('http://localhost:8000/suggest_questions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request),
-      })
-      if (!response.ok) {
-        throw new Error('Failed to fetch suggested questions');
-      }
-      const data = await response.json()
-      setSuggestedQuestions(data.suggested_questions || [])
-    } catch (error) {
-      console.error('Error generating suggested questions:', error)
-      setSuggestedQuestions([])
-    } finally {
-      setIsLoadingSuggestions(false);
-    }
-  }
-
-  const handleSuggestedQuestion = async (question: string) => {
-    setInput(question);
-    await handleSend();
-  }
-
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode)
-  }
+  };
 
   return (
-    <div className={`flex flex-col items-center justify-center min-h-screen ${isDarkMode ? 'bg-gradient-to-b from-gray-900 to-gray-800 text-white' : 'bg-gradient-to-b from-gray-100 to-white text-gray-800'} p-4`}>
+    <div className={`flex flex-col items-center justify-center min-h-screen ${isDarkMode ? 'bg-gradient-to-b from-gray-900 to-gray-800 text-white' : 'bg-gradient-to-b from-gray-100 to-white text-gray-800'} p-2 sm:p-4`}>
       <div className={`w-full max-w-2xl ${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-xl overflow-hidden`}>
-        {/* Header */}
-        <div className="bg-gradient-to-r from-[#0066FF] to-[#00FFFF] p-4 text-white font-bold flex items-center justify-between">
+        <div className="bg-gradient-to-r from-[#0066FF] to-[#00FFFF] p-3 sm:p-4 text-white font-bold flex items-center justify-between">
           <div className="flex items-center">
             <BotIcon className="mr-2" />
-            DAO PropTech Assistant
+            <span className="text-sm sm:text-base">DAO PropTech Assistant</span>
           </div>
           <Button variant="outline" size="sm" onClick={toggleTheme} className="text-white border-white hover:bg-white/20">
             {isDarkMode ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
           </Button>
         </div>
 
-        {/* Main Chat Area */}
-        <ScrollArea className="h-[400px] p-4">
+        <ScrollArea className="h-[350px] sm:h-[400px] p-2 sm:p-4">
           {messages.map((message, index) => (
-            <div key={index} className={`flex items-start mb-4 ${message.role === 'user' ? 'justify-end' : ''}`}>
-              {message.role === 'bot' && <BotIcon className="w-6 h-6 mr-2 text-[#00FFFF]" />}
-              <div className={`rounded-lg p-3 max-w-[70%] ${
-                message.role === 'user' 
-                  ? 'bg-[#ADFF2F] text-black' 
-                  : isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
-              }`}>
-                {message.role === 'user' ? (
-                  message.content
-                ) : (
-                  <ReactMarkdown 
-                    remarkPlugins={[remarkGfm]}
-                    className="prose prose-sm max-w-none"
-                    components={{
-                      a: ({node, ...props}) => <a {...props} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer">{props.children}</a>,
-                      p: ({node, ...props}) => <p {...props} className="mb-2" />,
-                      ul: ({node, ...props}) => <ul {...props} className="list-disc list-inside mb-2" />,
-                      ol: ({node, ...props}) => <ol {...props} className="list-decimal list-inside mb-2" />,
-                      li: ({node, ...props}) => <li {...props} className="mb-1" />,
-                      h1: ({node, ...props}) => <h1 {...props} className="text-xl font-bold mb-2">{props.children}</h1>,
-                      h2: ({node, ...props}) => <h2 {...props} className="text-lg font-bold mb-2">{props.children}</h2>,
-                      h3: ({node, ...props}) => <h3 {...props} className="text-md font-bold mb-2">{props.children}</h3>,
-                      code: ({node, className, children, ...props}) => {
-                        const match = /language-(\w+)/.exec(className || '')
-                        return match ? (
-                          <pre className="bg-gray-100 rounded p-2 mb-2 overflow-x-auto">
-                            <code className={`language-${match[1]}`} {...props}>
-                              {children}
-                            </code>
-                          </pre>
-                        ) : (
-                          <code {...props} className="bg-gray-100 rounded px-1 py-0.5">
-                            {children}
-                          </code>
-                        )
-                      },
-                    }}
-                  >
-                    {message.content}
-                  </ReactMarkdown>
-                )}
-              </div>
-              {message.role === 'user' && <UserIcon className="w-6 h-6 ml-2 text-[#ADFF2F]" />}
-            </div>
+            <MessageComponent key={index} message={message} isDarkMode={isDarkMode} />
           ))}
           {isThinking && (
             <div className="flex items-center mb-4">
@@ -173,44 +170,41 @@ export default function ChatbotPage() {
           <div ref={messagesEndRef} />
         </ScrollArea>
 
-        {/* Suggested Questions */}
-        <div className="grid grid-cols-2 gap-2 p-4">
-          {(suggestedQuestions.length > 0 ? suggestedQuestions : defaultSuggestedQuestions.map(q => q.text)).map((question, index) => (
-            <Button
-              key={index}
-              variant="outline"
-              size="lg"
-              onClick={() => handleSuggestedQuestion(question)}
-              className={`flex items-center justify-start space-x-2 ${
-                isDarkMode 
-                  ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600' 
-                  : 'bg-gray-200 hover:bg-gray-300 text-gray-800 border-gray-300'
-              }`}
-              disabled={isThinking}
-            >
-              {defaultSuggestedQuestions[index]?.icon}
-              <span className="text-sm">{question}</span>
-            </Button>
-          ))}
-        </div>
+        {showSuggestedQuestions && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 sm:p-4">
+            {staticSuggestedQuestions.map((question, index) => (
+              <Button
+                key={index}
+                variant="outline"
+                size="sm"
+                onClick={() => handleSendMessage(question)}
+                className={`flex items-center justify-start space-x-2 text-xs sm:text-sm ${isDarkMode
+                    ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600'
+                    : 'bg-gray-200 hover:bg-gray-300 text-gray-800 border-gray-300'
+                  }`}
+                disabled={isThinking}
+              >
+                <span className="truncate">{question}</span>
+              </Button>
+            ))}
+          </div>
+        )}
 
-        {/* Input Area */}
-        <div className={`p-4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+        <div className={`p-2 sm:p-4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
           <div className="flex space-x-2">
             <Input
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={handleInputChange}
+              onKeyPress={handleKeyPress}
               placeholder="Type your message..."
-              onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-              className={`flex-grow ${
-                isDarkMode 
-                  ? 'bg-gray-600 text-white placeholder-gray-400 border-gray-500' 
+              className={`flex-grow text-sm sm:text-base ${isDarkMode
+                  ? 'bg-gray-600 text-white placeholder-gray-400 border-gray-500'
                   : 'bg-white text-gray-800 placeholder-gray-500 border-gray-300'
-              }`}
+                }`}
               disabled={isThinking}
             />
-            <Button 
-              onClick={handleSend} 
+            <Button
+              onClick={() => handleSendMessage(input)}
               className={`${isThinking ? 'bg-gray-500' : 'bg-[#ADFF2F] hover:bg-[#9ACD32]'} text-black`}
               disabled={isThinking}
             >
