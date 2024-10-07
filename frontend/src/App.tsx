@@ -1,5 +1,5 @@
 import React from 'react';
-import ChatbotPage from './components/ChatbotPage.tsx';
+import ChatbotPage from './components/ChatbotPage';
 
 function App() {
   return (

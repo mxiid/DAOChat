@@ -1,8 +1,8 @@
 import * as React from 'react'
 import { useState, useCallback, useRef, lazy, Suspense } from 'react'
-import { Button } from "./ui/button.tsx"
-import { Input } from "./ui/input.tsx"
-import { ScrollArea } from "./ui/scroll-area.tsx"
+import { Button } from "./ui/button"
+import { Input } from "./ui/input"
+import { ScrollArea } from "./ui/scroll-area"
 import { SendIcon, BotIcon, UserIcon, Loader2Icon, SunIcon, MoonIcon } from 'lucide-react'
 import axios from 'axios'
 
@@ -57,16 +57,23 @@ const useChatbot = () => {
     try {
       const response = await axios.post('/api/ask', { text: message });
 
-      if (response.data && response.data.answer) {
-        const botMessage: Message = { role: 'bot', content: response.data.answer };
+      console.log('API Response:', response); // For debugging
+
+      if (response.data && typeof response.data === 'object' && response.data.text) {
+        const botMessage: Message = { role: 'bot', content: response.data.text };
         setMessages(prev => [...prev, botMessage]);
       } else {
+        console.error('Unexpected response format:', response.data);
         throw new Error('Unexpected response format');
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      const errorMessage: Message = { role: 'bot', content: 'Sorry, I encountered an error. Please try again.' };
-      setMessages(prev => [...prev, errorMessage]);
+      let errorMessage = 'Sorry, I encountered an error. Please try again.';
+      if (error instanceof Error) {
+        errorMessage += ` Error details: ${error.message}`;
+      }
+      const errorBotMessage: Message = { role: 'bot', content: errorMessage };
+      setMessages(prev => [...prev, errorBotMessage]);
     } finally {
       setIsThinking(false);
     }
@@ -143,64 +150,66 @@ export default function ChatbotPage() {
   };
 
   return (
-    <div className={`flex flex-col items-center justify-center min-h-screen ${isDarkMode ? 'bg-gradient-to-b from-gray-900 to-gray-800 text-white' : 'bg-gradient-to-b from-gray-100 to-white text-gray-800'} p-2 sm:p-4`}>
-      <div className={`w-full max-w-2xl ${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-xl overflow-hidden`}>
-        <div className="bg-gradient-to-r from-[#0066FF] to-[#00FFFF] p-3 sm:p-4 text-white font-bold flex items-center justify-between">
-          <div className="flex items-center">
-            <BotIcon className="mr-2" />
-            <span className="text-sm sm:text-base">DAO PropTech Assistant</span>
-          </div>
-          <Button variant="outline" size="sm" onClick={toggleTheme} className="text-white border-white hover:bg-white/20">
-            {isDarkMode ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
-          </Button>
+    <div className={`flex flex-col h-screen ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-800'}`}>
+      <header className="bg-gradient-to-r from-[#0066FF] to-[#00FFFF] p-4 text-white font-bold flex items-center justify-between">
+        <div className="flex items-center">
+          <BotIcon className="mr-2" />
+          <span className="text-lg">DAO PropTech Assistant</span>
         </div>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={toggleTheme} 
+          className="bg-white/10 hover:bg-white/20 text-white border-transparent hover:border-white transition-colors"
+        >
+          {isDarkMode ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
+        </Button>
+      </header>
 
-        <ScrollArea className="h-[350px] sm:h-[400px] p-2 sm:p-4">
-          {messages.map((message, index) => (
-            <MessageComponent key={index} message={message} isDarkMode={isDarkMode} />
-          ))}
-          {isThinking && (
-            <div className="flex items-center mb-4">
-              <BotIcon className="w-6 h-6 mr-2 text-[#00FFFF]" />
-              <div className={`${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'} rounded-lg p-3`}>
-                <Loader2Icon className="w-4 h-4 animate-spin text-[#00FFFF]" />
-              </div>
+      <main className="flex-grow flex flex-col overflow-hidden">
+        {messages.length === 0 ? (
+          <div className="flex-grow flex flex-col items-center justify-center px-4">
+            <h2 className="text-2xl font-semibold text-center mb-8">How can I assist you with real estate investments today?</h2>
+            <div className="w-full max-w-md space-y-4">
+              {staticSuggestedQuestions.map((question, index) => (
+                <Button
+                  key={index}
+                  variant="outline"
+                  onClick={() => handleSendMessage(question)}
+                  className={`w-full text-left ${isDarkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-white hover:bg-gray-100'}`}
+                >
+                  {question}
+                </Button>
+              ))}
             </div>
-          )}
-          <div ref={messagesEndRef} />
-        </ScrollArea>
-
-        {showSuggestedQuestions && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 sm:p-4">
-            {staticSuggestedQuestions.map((question, index) => (
-              <Button
-                key={index}
-                variant="outline"
-                size="sm"
-                onClick={() => handleSendMessage(question)}
-                className={`flex items-center justify-start space-x-2 text-xs sm:text-sm ${isDarkMode
-                    ? 'bg-gray-700 hover:bg-gray-600 text-white border-gray-600'
-                    : 'bg-gray-200 hover:bg-gray-300 text-gray-800 border-gray-300'
-                  }`}
-                disabled={isThinking}
-              >
-                <span className="truncate">{question}</span>
-              </Button>
-            ))}
           </div>
+        ) : (
+          <ScrollArea className="flex-grow px-4 py-2">
+            <div className="max-w-3xl mx-auto">
+              {messages.map((message, index) => (
+                <MessageComponent key={index} message={message} isDarkMode={isDarkMode} />
+              ))}
+              {isThinking && (
+                <div className="flex items-center mb-4">
+                  <BotIcon className="w-6 h-6 mr-2 text-[#00FFFF]" />
+                  <div className={`${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'} rounded-lg p-3`}>
+                    <Loader2Icon className="w-4 h-4 animate-spin text-[#00FFFF]" />
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </ScrollArea>
         )}
 
-        <div className={`p-2 sm:p-4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
-          <div className="flex space-x-2">
+        <div className={`p-4 ${isDarkMode ? 'bg-gray-800' : 'bg-white'} ${messages.length === 0 ? '' : 'border-t'} ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className={`max-w-3xl mx-auto flex space-x-2 ${messages.length === 0 ? 'w-full sm:w-2/3 md:w-1/2 lg:w-1/3' : ''}`}>
             <Input
               value={input}
               onChange={handleInputChange}
               onKeyPress={handleKeyPress}
-              placeholder="Type your message..."
-              className={`flex-grow text-sm sm:text-base ${isDarkMode
-                  ? 'bg-gray-600 text-white placeholder-gray-400 border-gray-500'
-                  : 'bg-white text-gray-800 placeholder-gray-500 border-gray-300'
-                }`}
+              placeholder={messages.length === 0 ? "Ask me anything about real estate investments..." : "Type your message..."}
+              className={`flex-grow ${isDarkMode ? 'bg-gray-700 text-white placeholder-gray-400' : 'bg-gray-100 text-gray-800 placeholder-gray-500'}`}
               disabled={isThinking}
             />
             <Button
@@ -212,7 +221,7 @@ export default function ChatbotPage() {
             </Button>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   )
 }
