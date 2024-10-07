@@ -43,7 +43,6 @@ const useChatbot = () => {
   ])
   const [input, setInput] = useState('')
   const [isThinking, setIsThinking] = useState(false)
-  const [showSuggestedQuestions, setShowSuggestedQuestions] = useState(true)
 
   const handleSendMessage = useCallback(async (message: string) => {
     if (message.trim() === '' || isThinking) return;
@@ -52,7 +51,6 @@ const useChatbot = () => {
     setMessages(prev => [...prev, newUserMessage]);
     setInput('');
     setIsThinking(true);
-    setShowSuggestedQuestions(false);
 
     try {
       const response = await axios.post('/api/ask', { text: message });
@@ -79,7 +77,7 @@ const useChatbot = () => {
     }
   }, [isThinking]);
 
-  return { messages, input, setInput, isThinking, showSuggestedQuestions, handleSendMessage }
+  return { messages, input, setInput, isThinking, handleSendMessage }
 }
 
 const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message, isDarkMode: boolean }) => (
@@ -130,9 +128,18 @@ const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message
   </div>
 ))
 
+const GeometricShapes = () => (
+  <div className="absolute inset-0 overflow-hidden pointer-events-none">
+    <div className="absolute top-10 left-10 w-20 h-20 bg-blue-500 opacity-20 transform rotate-45"></div>
+    <div className="absolute bottom-20 right-20 w-32 h-32 bg-teal-500 opacity-20 rounded-lg transform -rotate-12"></div>
+    <div className="absolute top-1/3 right-1/4 w-16 h-16 bg-indigo-500 opacity-20 transform rotate-12"></div>
+    <div className="absolute bottom-1/4 left-1/3 w-24 h-24 bg-purple-500 opacity-20 rounded-full"></div>
+  </div>
+)
+
 export default function ChatbotPage() {
   const { isDarkMode, toggleTheme } = useTheme()
-  const { messages, input, setInput, isThinking, showSuggestedQuestions, handleSendMessage } = useChatbot()
+  const { messages, input, setInput, isThinking, handleSendMessage } = useChatbot()
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
@@ -166,7 +173,9 @@ export default function ChatbotPage() {
         </Button>
       </header>
 
-      <main className="flex-grow flex flex-col overflow-hidden">
+      <main className="flex-grow flex flex-col overflow-hidden relative">
+        {messages.length === 0 && <GeometricShapes />}
+        
         {messages.length === 0 ? (
           <div className="flex-grow flex flex-col items-center justify-center px-4">
             <h2 className="text-2xl font-semibold text-center mb-8">How can I assist you with real estate investments today?</h2>
@@ -202,19 +211,19 @@ export default function ChatbotPage() {
           </ScrollArea>
         )}
 
-        <div className={`p-4 ${isDarkMode ? 'bg-gray-800' : 'bg-white'} ${messages.length === 0 ? '' : 'border-t'} ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          <div className={`max-w-3xl mx-auto flex space-x-2 ${messages.length === 0 ? 'w-full sm:w-2/3 md:w-1/2 lg:w-1/3' : ''}`}>
+        <div className="p-4 flex justify-center">
+          <div className={`flex space-x-2 w-full max-w-2xl rounded-full shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
             <Input
               value={input}
               onChange={handleInputChange}
               onKeyPress={handleKeyPress}
               placeholder={messages.length === 0 ? "Ask me anything about real estate investments..." : "Type your message..."}
-              className={`flex-grow ${isDarkMode ? 'bg-gray-700 text-white placeholder-gray-400' : 'bg-gray-100 text-gray-800 placeholder-gray-500'}`}
+              className={`flex-grow rounded-l-full border-0 focus:ring-0 ${isDarkMode ? 'bg-gray-800 text-white placeholder-gray-400' : 'bg-white text-gray-800 placeholder-gray-500'}`}
               disabled={isThinking}
             />
             <Button
               onClick={() => handleSendMessage(input)}
-              className={`${isThinking ? 'bg-gray-500' : 'bg-[#ADFF2F] hover:bg-[#9ACD32]'} text-black`}
+              className={`rounded-r-full ${isThinking ? 'bg-gray-500' : 'bg-[#ADFF2F] hover:bg-[#9ACD32]'} text-black`}
               disabled={isThinking}
             >
               {isThinking ? <Loader2Icon className="w-4 h-4 animate-spin" /> : <SendIcon className="w-4 h-4" />}
