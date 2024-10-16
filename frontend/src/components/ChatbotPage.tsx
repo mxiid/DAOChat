@@ -5,6 +5,7 @@ import { Input } from "./ui/input"
 import { ScrollArea } from "./ui/scroll-area"
 import { SendIcon, BotIcon, UserIcon, Loader2Icon, SunIcon, MoonIcon } from 'lucide-react'
 import axios from 'axios'
+import remarkGfm from 'remark-gfm'  // Add this import
 
 const ReactMarkdown = lazy(() => import('react-markdown'))
 
@@ -92,7 +93,7 @@ const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message
       ) : (
         <Suspense fallback={<div>Loading...</div>}>
           <ReactMarkdown
-            remarkPlugins={[]}
+            remarkPlugins={[remarkGfm]}  // Add this line
             className={`prose prose-sm max-w-none break-words ${isDarkMode ? 'dark' : ''}`}
             components={{
               a: ({ node, ...props }) => <a {...props} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer">{props.children}</a>,
@@ -117,6 +118,16 @@ const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message
                   </code>
                 )
               },
+              table: ({node, ...props}) => (
+                <table {...props} className={`border-collapse border ${isDarkMode ? 'border-gray-600' : 'border-gray-300'} my-2`} />
+              ),
+              thead: ({node, ...props}) => (
+                <thead {...props} className={isDarkMode ? 'bg-gray-800' : 'bg-gray-100'} />
+              ),
+              tbody: ({node, ...props}) => <tbody {...props} />,
+              tr: ({node, ...props}) => <tr {...props} className="border-b border-gray-300" />,
+              th: ({node, ...props}) => <th {...props} className="border border-gray-300 px-4 py-2 text-left" />,
+              td: ({node, ...props}) => <td {...props} className="border border-gray-300 px-4 py-2" />,
             }}
           >
             {message.content}
