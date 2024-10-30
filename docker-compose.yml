@@ -12,10 +12,6 @@ services:
       dockerfile: Dockerfile
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-    volumes:
-      - type: bind
-        source: /data/coolify/applications/g8s4sg0s00s04wcowoc04kcc/backend/data
-        target: /app/data
     expose:
       - "8080"
 
