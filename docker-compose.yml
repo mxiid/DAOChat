@@ -6,7 +6,9 @@ services:
     expose:
       - "3000"
     deploy:
+      mode: replicated
       replicas: 3
+
 
   backend:
     build:
@@ -19,5 +21,6 @@ services:
     expose:
       - "8080"
     deploy:
+      mode: replicated
       replicas: 3
 
