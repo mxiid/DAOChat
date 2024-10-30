@@ -6,7 +6,6 @@ services:
     expose:
       - "3000"
 
-
   backend:
     build:
       context: ./backend
@@ -14,7 +13,9 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
-      - ./backend/data:/app/data:ro
+      - type: bind
+        source: /data/coolify/applications/g8s4sg0s00s04wcowoc04kcc/backend/data
+        target: /app/data
     expose:
       - "8080"
 
