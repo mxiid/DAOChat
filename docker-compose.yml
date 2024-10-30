@@ -5,9 +5,6 @@ services:
       dockerfile: Dockerfile
     expose:
       - "3000"
-    deploy:
-      mode: replicated
-      replicas: 3
 
 
   backend:
@@ -20,7 +17,4 @@ services:
       - ./backend/data:/app/data:ro
     expose:
       - "8080"
-    deploy:
-      mode: replicated
-      replicas: 3
 
