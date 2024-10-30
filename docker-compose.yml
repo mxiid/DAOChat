@@ -4,11 +4,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000-3002:3000"
+      - "3000:3000"
     expose:
       - "3000"
-    deploy:
-      replicas: 3
 
   backend:
     build:
@@ -19,8 +17,6 @@ services:
     volumes:
       - ./backend/data:/app/data
     ports:
-      - "8000-8002:8000"
+      - "8080:8080"
     expose:
-      - "8000"
-    deploy:
-      replicas: 3
+      - "8080"
