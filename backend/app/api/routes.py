@@ -16,7 +16,7 @@ class Question(BaseModel):
 class Answer(BaseModel):
     text: str
 
-@router.post("/api/ask", response_model=Answer)
+@router.post("/ask", response_model=Answer)
 async def ask(question: Question):
     try:
         answer = await ask_question(question.text)
@@ -24,7 +24,7 @@ async def ask(question: Question):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/api/suggest_questions", response_model=List[str])
+@router.post("/suggest_questions", response_model=List[str])
 async def suggest(context: str):
     try:
         questions = await suggest_questions(context)
