@@ -12,7 +12,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(routes.router)
+app.include_router(routes.router, prefix="/api")
 
 if __name__ == "__main__":
     import uvicorn
