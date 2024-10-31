@@ -46,11 +46,15 @@ class RAG:
     def _load_vectordb(self):
         if os.path.exists(Config.FAISS_INDEX_PATH):
             try:
-                vectordb = FAISS.load_local(Config.FAISS_INDEX_PATH, self.embeddings, allow_dangerous_deserialization=True)
-                print(f"Loaded existing FAISS index from {Config.FAISS_INDEX_PATH}")
+                vectordb = FAISS.load_local(
+                    Config.FAISS_INDEX_PATH, 
+                    self.embeddings,
+                    allow_dangerous_deserialization=True
+                )
+                logger.info(f"Loaded existing FAISS index from {Config.FAISS_INDEX_PATH}")
                 return vectordb
             except Exception as e:
-                print(f"Error loading existing index: {e}")
+                logger.error(f"Error loading existing index: {e}")
                 raise
         else:
             raise FileNotFoundError(f"FAISS index not found at {Config.FAISS_INDEX_PATH}")
