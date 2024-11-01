@@ -204,3 +204,6 @@ milvus/logs/
 letsencrypt/
 
 #Test
+document_cache/
+processing_progress.json
+ 
