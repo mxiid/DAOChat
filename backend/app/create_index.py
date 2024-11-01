@@ -6,29 +6,37 @@ from .config import Config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def main():
-    # Initialize processor
+def main(verify_only=False):
     processor = DocumentProcessor()
-    
-    # Define paths
-    pdf_directory = Config.DOCUMENTS_PATH
-    index_path = Config.FAISS_INDEX_PATH
+    data_dir = Path("backend/data")
     
     try:
-        # Create or update index
-        vectorstore = processor.create_or_update_index(
-            pdf_directory=pdf_directory,
-            existing_index_path=index_path
-        )
+        if not verify_only:
+            # Process all PDFs
+            all_docs = []
+            for pdf_file in data_dir.glob("*.pdf"):
+                docs = processor.process_pdf(str(pdf_file))
+                all_docs.extend(docs)
+                
+            logger.info(f"\nTotal documents processed: {len(all_docs)}")
+            logger.info("Documents per project:")
+            project_counts = {}
+            for doc in all_docs:
+                project = doc.metadata["project"]
+                project_counts[project] = project_counts.get(project, 0) + 1
+            for project, count in project_counts.items():
+                logger.info(f"{project}: {count} pages")
         
-        # Verify the index
-        processor.verify_index(index_path)
+        # Verify with comprehensive checks
+        processor.verify_index(Config.FAISS_INDEX_PATH)
         
-        logger.info("Index creation/update completed successfully")
+        logger.info("Index verification completed successfully")
         
     except Exception as e:
         logger.error(f"Error in index creation process: {e}")
         raise
 
 if __name__ == "__main__":
-    main() 
+    import sys
+    verify_only = "--verify" in sys.argv
+    main(verify_only=verify_only) 

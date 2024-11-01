@@ -2,7 +2,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pathlib import Path
 import logging
 import os
@@ -21,6 +21,10 @@ import PyPDF2
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import time
+from PyPDF2 import PdfWriter
+import tempfile
+import json
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -38,97 +42,264 @@ class DocumentProcessor:
         if not self.api_key:
             raise ValueError("UNSTRUCTURED_API_KEY environment variable not set")
 
-    def process_pdf(self, file_path: str) -> List[Document]:
-        """Process a single PDF file using Unstructured API directly"""
-        import requests
-        import PyPDF2
-        from requests.adapters import HTTPAdapter
-        from urllib3.util.retry import Retry
-        import time
+    def _cache_documents(self, documents: List[Document], cache_file: str) -> None:
+        """Cache processed documents to file"""
+        cache_data = []
+        for doc in documents:
+            cache_data.append({
+                "content": doc.page_content,
+                "metadata": doc.metadata
+            })
+        
+        cache_path = Path("document_cache")
+        cache_path.mkdir(exist_ok=True)
+        
+        with open(cache_path / cache_file, "w", encoding="utf-8") as f:
+            json.dump(cache_data, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"Cached {len(documents)} documents to {cache_file}")
+
+    def _load_cached_documents(self, cache_file: str) -> List[Document]:
+        """Load documents from cache"""
+        cache_path = Path("document_cache") / cache_file
+        
+        if not cache_path.exists():
+            logger.warning(f"Cache file not found: {cache_file}")
+            return []
         
         try:
-            logger.info(f"Processing PDF: {file_path}")
+            with open(cache_path, encoding="utf-8") as f:
+                cache_data = json.load(f)
+            
             documents = []
+            for item in cache_data:
+                documents.append(
+                    Document(
+                        page_content=item["content"],
+                        metadata=item["metadata"]
+                    )
+                )
             
-            # Create a session with retry logic
-            session = requests.Session()
-            retries = Retry(
-                total=3,
-                backoff_factor=1,
-                status_forcelist=[408, 429, 500, 502, 503, 504]
-            )
-            session.mount('https://', HTTPAdapter(max_retries=retries))
+            logger.info(f"Loaded {len(documents)} documents from cache")
+            return documents
             
-            # Open PDF and get number of pages
+        except Exception as e:
+            logger.error(f"Error loading cache {cache_file}: {e}")
+            return []
+
+    def process_pdf(self, file_path: str) -> List[Document]:
+        """Process PDF with progress saving and retry logic"""
+        progress_file = Path("processing_progress.json")
+        
+        try:
+            # Create cache directory if it doesn't exist
+            Path("document_cache").mkdir(exist_ok=True)
+            
+            # Load previous progress if exists
+            if progress_file.exists():
+                with open(progress_file) as f:
+                    progress = json.load(f)
+            else:
+                progress = {}
+            
+            file_key = str(Path(file_path).name)
+            if file_key in progress and progress[file_key].get("completed"):
+                logger.info(f"Skipping already processed file: {file_path}")
+                return self._load_cached_documents(progress[file_key]["cache_file"])
+            
+            logger.info(f"Processing PDF: {file_path}")
+            all_elements = []
+            
+            # Process in very small chunks (2 pages)
+            chunk_size = 2
             with open(file_path, "rb") as pdf_file:
                 pdf_reader = PyPDF2.PdfReader(pdf_file)
                 num_pages = len(pdf_reader.pages)
                 logger.info(f"PDF has {num_pages} pages")
-            
-            # Process the entire PDF in one request
-            logger.info("Sending PDF for processing...")
-            try:
-                with open(file_path, "rb") as f:
-                    response = session.post(
-                        self.api_url,
-                        headers={
-                            "unstructured-api-key": self.api_key,
-                            "accept": "application/json"
-                        },
-                        files={"files": f},
-                        timeout=300  # 5 minutes timeout
+                
+                # Resume from last successful chunk if available
+                start_page = progress.get(file_key, {}).get("last_page", 0)
+                
+                for start_page in range(start_page, num_pages, chunk_size):
+                    end_page = min(start_page + chunk_size, num_pages)
+                    
+                    # Try processing this chunk with retries
+                    chunk_elements = self._process_chunk_with_retry(
+                        file_path, start_page, end_page,
+                        max_retries=3, base_timeout=60
                     )
-                
-                if response.status_code == 200:
-                    elements = response.json()
-                    logger.info(f"Successfully received {len(elements)} elements from API")
                     
-                    # Debug log to see what we're getting
-                    if elements:
-                        logger.info(f"Element types distribution: {dict((e.get('type'), elements.count(e.get('type'))) for e in elements)}")
+                    if chunk_elements:
+                        all_elements.extend(chunk_elements)
+                        # Save progress
+                        progress[file_key] = {
+                            "last_page": end_page,
+                            "total_elements": len(all_elements)
+                        }
+                        with open(progress_file, "w") as f:
+                            json.dump(progress, f)
                     
-                    for element in elements:
-                        # Skip images and very short text
-                        if (element.get("text") and 
-                            element.get("type") != "Image" and
-                            len(element["text"].strip()) > 10):
-                            
-                            documents.append(
-                                Document(
-                                    page_content=element["text"].strip(),
-                                    metadata={
-                                        "source": file_path,
-                                        "type": element.get("type", "unknown"),
-                                        "page_num": element.get("metadata", {}).get("page_number", 0)
-                                    }
-                                )
-                            )
-                    
-                    # Sort documents by page number
-                    documents.sort(key=lambda x: x.metadata["page_num"])
-                    
-                    logger.info(f"Created {len(documents)} documents from {len(elements)} elements")
-                    
-                    # Debug log for document content - show first meaningful text
-                    if documents:
-                        narrative_docs = [doc for doc in documents if doc.metadata["type"] == "NarrativeText"]
-                        if narrative_docs:
-                            logger.info("Sample narrative content:")
-                            logger.info(f"Page {narrative_docs[0].metadata['page_num']}: {narrative_docs[0].page_content[:200]}...")
-                else:
-                    logger.error(f"Error response from API: {response.status_code}")
-                    logger.error(f"Response content: {response.text}")
-                    response.raise_for_status()
-                
-            except requests.exceptions.Timeout:
-                logger.error("Request timed out. The API might still be processing the document.")
-                raise
+                    # Longer delay between chunks
+                    time.sleep(5)
+            
+            # Process collected elements into documents
+            documents = self._create_documents_from_elements(all_elements, file_path)
+            
+            # Cache the results
+            cache_file = f"cache_{file_key}.json"
+            self._cache_documents(documents, cache_file)
+            progress[file_key] = {
+                "completed": True,
+                "cache_file": cache_file
+            }
+            with open(progress_file, "w") as f:
+                json.dump(progress, f)
             
             return documents
             
         except Exception as e:
             logger.error(f"Error processing PDF {file_path}: {str(e)}")
             raise
+
+    def _process_chunk_with_retry(self, file_path: str, start_page: int, end_page: int, 
+                                max_retries: int = 3, base_timeout: int = 60) -> List[Dict]:
+        """Process a chunk of PDF with retries"""
+        pdf_writer = PdfWriter()
+        
+        # Create chunk PDF
+        with open(file_path, "rb") as pdf_file:
+            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            for page_num in range(start_page, end_page):
+                pdf_writer.add_page(pdf_reader.pages[page_num])
+        
+        # Try processing with increasing timeouts
+        for attempt in range(max_retries):
+            timeout = base_timeout * (attempt + 1)  # Increase timeout with each retry
+            
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_pdf:
+                    pdf_writer.write(temp_pdf)
+                    temp_pdf_path = temp_pdf.name
+                
+                logger.info(f"Processing pages {start_page + 1} to {end_page} (Attempt {attempt + 1}/{max_retries}, timeout={timeout}s)")
+                
+                with open(temp_pdf_path, "rb") as f:
+                    response = requests.post(
+                        self.api_url,
+                        headers={
+                            "unstructured-api-key": self.api_key,
+                            "accept": "application/json"
+                        },
+                        files={"files": f},
+                        timeout=timeout
+                    )
+                
+                if response.status_code == 200:
+                    elements = response.json()
+                    logger.info(f"Received {len(elements)} elements")
+                    return elements
+                    
+            except requests.exceptions.Timeout:
+                logger.warning(f"Timeout on attempt {attempt + 1}/{max_retries}")
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(10)  # Wait longer between retries
+                
+            except Exception as e:
+                logger.error(f"Error on attempt {attempt + 1}: {str(e)}")
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(10)
+                
+            finally:
+                try:
+                    os.unlink(temp_pdf_path)
+                except:
+                    pass
+        
+        return []
+
+    def _create_documents_from_elements(self, elements: List[Dict], file_path: str) -> List[Document]:
+        """Create semantic documents with better metadata and chunking"""
+        documents = []
+        current_section = []
+        current_section_text = ""
+        current_page_range = None
+        project_name = Path(file_path).stem
+        
+        # Group elements by section while preserving page numbers
+        for element in elements:
+            if not element.get("text"):
+                continue
+                
+            text = element["text"].strip()
+            if len(text) < 10:  # Skip very short elements
+                continue
+            
+            # Get page number from element
+            page_num = element.get("page_number", None)
+            element_type = element.get("type", "unknown")
+            
+            # Start new section if:
+            # 1. New major section header found
+            # 2. Current section is too long
+            # 3. Page changed significantly
+            should_start_new_section = (
+                element_type in ["Title", "Header", "Heading"] or
+                len(current_section_text) > 1000 or
+                (page_num and current_page_range and abs(page_num - current_page_range[-1]) > 1)
+            )
+            
+            if should_start_new_section and current_section:
+                # Create document from current section
+                doc_text = "\n".join(sec["text"].strip() for sec in current_section)
+                start_page = current_section[0].get("page_number")
+                end_page = current_section[-1].get("page_number")
+                page_range = f"{start_page}-{end_page}" if start_page and end_page else "unknown"
+                
+                documents.append(
+                    Document(
+                        page_content=doc_text,
+                        metadata={
+                            "source": file_path,
+                            "project": project_name,
+                            "page_range": page_range,
+                            "section_type": current_section[0].get("type", "unknown"),
+                            "section_title": current_section[0].get("text", "")[:100]  # Store section title
+                        }
+                    )
+                )
+                current_section = []
+                current_section_text = ""
+                current_page_range = []
+            
+            current_section.append(element)
+            current_section_text += f"\n{text}"
+            if page_num:
+                current_page_range = current_page_range or []
+                current_page_range.append(page_num)
+        
+        # Don't forget the last section
+        if current_section:
+            doc_text = "\n".join(sec["text"].strip() for sec in current_section)
+            start_page = current_section[0].get("page_number")
+            end_page = current_section[-1].get("page_number")
+            page_range = f"{start_page}-{end_page}" if start_page and end_page else "unknown"
+            
+            documents.append(
+                Document(
+                    page_content=doc_text,
+                    metadata={
+                        "source": file_path,
+                        "project": project_name,
+                        "page_range": page_range,
+                        "section_type": current_section[0].get("type", "unknown"),
+                        "section_title": current_section[0].get("text", "")[:100]
+                    }
+                )
+            )
+        
+        return documents
 
     def create_or_update_index(self, pdf_directory: str, existing_index_path: Optional[str] = None) -> FAISS:
         """Create or update FAISS index from a directory of PDFs"""
@@ -182,26 +353,66 @@ class DocumentProcessor:
             raise
 
     def verify_index(self, index_path: str) -> None:
-        """Verify the contents of a FAISS index"""
+        """Verify the contents of the index with better queries"""
         try:
-            vectordb = FAISS.load_local(
+            vectorstore = FAISS.load_local(
                 index_path, 
                 self.embeddings,
                 allow_dangerous_deserialization=True
             )
             
-            # Sample some documents
-            results = vectordb.similarity_search(
-                "Show me everything",
-                k=5  # Adjust number of samples
-            )
-            
-            logger.info(f"Index verification results:")
-            for i, doc in enumerate(results):
-                logger.info(f"\nDocument {i+1}:")
-                logger.info(f"Content preview: {doc.page_content[:200]}...")
-                logger.info(f"Metadata: {doc.metadata}")
+            # More specific test queries
+            test_queries = [
+                # Project-specific queries
+                "What are the key features and amenities of Urban Dwellings project specifically?",
+                "Tell me about the location and surroundings of Elements Residencia",
+                "What is the investment structure and payment plan for Globe Residency in Naya Nazimabad?",
+                "Describe the amenities and facilities available in Broad Peak Realty",
+                "When will Project Akron be completed and what is its timeline?",
                 
+                # Cross-project queries
+                "Compare the payment plans available across different projects",
+                "Who are the developers and partners for each project?",
+                "What are the environmental and sustainability features in these projects?",
+                
+                # Specific detail queries
+                "What is the total number of units in Urban Dwellings?",
+                "What is the exact location of Elements Residencia in Bahria Town?",
+                "What are the security features in Broad Peak Realty?"
+            ]
+            
+            logger.info("\nVerification Results:")
+            project_coverage = defaultdict(int)
+            
+            for query in test_queries:
+                logger.info(f"\nTesting query: {query}")
+                docs = vectorstore.similarity_search(
+                    query, 
+                    k=3,
+                    filter=None  # Allow all projects to be searched
+                )
+                
+                projects_found = set()
+                for doc in docs:
+                    project = doc.metadata.get("project", "unknown")
+                    projects_found.add(project)
+                    page_range = doc.metadata.get("page_range", "unknown")
+                    section_title = doc.metadata.get("section_title", "unknown")
+                    
+                    logger.info(f"\nProject: {project}")
+                    logger.info(f"Pages: {page_range}")
+                    logger.info(f"Section: {section_title}")
+                    logger.info(f"Preview: {doc.page_content[:200]}...")
+                    
+                    project_coverage[project] += 1
+                
+                logger.info(f"Projects found for query: {', '.join(projects_found)}")
+            
+            # Report coverage
+            logger.info("\nProject Coverage in Queries:")
+            for project, count in project_coverage.items():
+                logger.info(f"{project}: appeared in {count} query results")
+            
         except Exception as e:
-            logger.error(f"Error verifying index: {str(e)}")
-            raise 
+            logger.error(f"Error verifying index: {e}")
+            raise
