@@ -51,27 +51,27 @@ class DocumentProcessor:
                 "content": doc.page_content,
                 "metadata": doc.metadata
             })
-        
+
         cache_path = Path("document_cache")
         cache_path.mkdir(exist_ok=True)
-        
+
         with open(cache_path / cache_file, "w", encoding="utf-8") as f:
             json.dump(cache_data, f, ensure_ascii=False, indent=2)
-        
+
         logger.info(f"Cached {len(documents)} documents to {cache_file}")
 
     def _load_cached_documents(self, cache_file: str) -> List[Document]:
         """Load documents from cache"""
         cache_path = Path("document_cache") / cache_file
-        
+
         if not cache_path.exists():
             logger.warning(f"Cache file not found: {cache_file}")
             return []
-        
+
         try:
             with open(cache_path, encoding="utf-8") as f:
                 cache_data = json.load(f)
-            
+
             documents = []
             for item in cache_data:
                 documents.append(
@@ -80,10 +80,10 @@ class DocumentProcessor:
                         metadata=item["metadata"]
                     )
                 )
-            
+
             logger.info(f"Loaded {len(documents)} documents from cache")
             return documents
-            
+
         except Exception as e:
             logger.error(f"Error loading cache {cache_file}: {e}")
             return []
@@ -91,45 +91,45 @@ class DocumentProcessor:
     def process_pdf(self, file_path: str) -> List[Document]:
         """Process PDF with progress saving and retry logic"""
         progress_file = Path("processing_progress.json")
-        
+
         try:
             # Create cache directory if it doesn't exist
             Path("document_cache").mkdir(exist_ok=True)
-            
+
             # Load previous progress if exists
             if progress_file.exists():
                 with open(progress_file) as f:
                     progress = json.load(f)
             else:
                 progress = {}
-            
+
             file_key = str(Path(file_path).name)
             if file_key in progress and progress[file_key].get("completed"):
                 logger.info(f"Skipping already processed file: {file_path}")
                 return self._load_cached_documents(progress[file_key]["cache_file"])
-            
+
             logger.info(f"Processing PDF: {file_path}")
             all_elements = []
-            
+
             # Process in very small chunks (2 pages)
             chunk_size = 2
             with open(file_path, "rb") as pdf_file:
                 pdf_reader = PyPDF2.PdfReader(pdf_file)
                 num_pages = len(pdf_reader.pages)
                 logger.info(f"PDF has {num_pages} pages")
-                
+
                 # Resume from last successful chunk if available
                 start_page = progress.get(file_key, {}).get("last_page", 0)
-                
+
                 for start_page in range(start_page, num_pages, chunk_size):
                     end_page = min(start_page + chunk_size, num_pages)
-                    
+
                     # Try processing this chunk with retries
                     chunk_elements = self._process_chunk_with_retry(
                         file_path, start_page, end_page,
                         max_retries=3, base_timeout=60
                     )
-                    
+
                     if chunk_elements:
                         all_elements.extend(chunk_elements)
                         # Save progress
@@ -139,13 +139,13 @@ class DocumentProcessor:
                         }
                         with open(progress_file, "w") as f:
                             json.dump(progress, f)
-                    
+
                     # Longer delay between chunks
                     time.sleep(5)
-            
+
             # Process collected elements into documents
             documents = self._create_documents_from_elements(all_elements, file_path)
-            
+
             # Cache the results
             cache_file = f"cache_{file_key}.json"
             self._cache_documents(documents, cache_file)
@@ -155,9 +155,9 @@ class DocumentProcessor:
             }
             with open(progress_file, "w") as f:
                 json.dump(progress, f)
-            
+
             return documents
-            
+
         except Exception as e:
             logger.error(f"Error processing PDF {file_path}: {str(e)}")
             raise
@@ -166,24 +166,24 @@ class DocumentProcessor:
                                 max_retries: int = 3, base_timeout: int = 60) -> List[Dict]:
         """Process a chunk of PDF with retries"""
         pdf_writer = PdfWriter()
-        
+
         # Create chunk PDF
         with open(file_path, "rb") as pdf_file:
             pdf_reader = PyPDF2.PdfReader(pdf_file)
             for page_num in range(start_page, end_page):
                 pdf_writer.add_page(pdf_reader.pages[page_num])
-        
+
         # Try processing with increasing timeouts
         for attempt in range(max_retries):
             timeout = base_timeout * (attempt + 1)  # Increase timeout with each retry
-            
+
             try:
                 with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_pdf:
                     pdf_writer.write(temp_pdf)
                     temp_pdf_path = temp_pdf.name
-                
+
                 logger.info(f"Processing pages {start_page + 1} to {end_page} (Attempt {attempt + 1}/{max_retries}, timeout={timeout}s)")
-                
+
                 with open(temp_pdf_path, "rb") as f:
                     response = requests.post(
                         self.api_url,
@@ -194,30 +194,30 @@ class DocumentProcessor:
                         files={"files": f},
                         timeout=timeout
                     )
-                
+
                 if response.status_code == 200:
                     elements = response.json()
                     logger.info(f"Received {len(elements)} elements")
                     return elements
-                    
+
             except requests.exceptions.Timeout:
                 logger.warning(f"Timeout on attempt {attempt + 1}/{max_retries}")
                 if attempt == max_retries - 1:
                     raise
                 time.sleep(10)  # Wait longer between retries
-                
+
             except Exception as e:
                 logger.error(f"Error on attempt {attempt + 1}: {str(e)}")
                 if attempt == max_retries - 1:
                     raise
                 time.sleep(10)
-                
+
             finally:
                 try:
                     os.unlink(temp_pdf_path)
                 except:
                     pass
-        
+
         return []
 
     def _create_documents_from_elements(self, elements: List[Dict], file_path: str) -> List[Document]:
@@ -227,7 +227,7 @@ class DocumentProcessor:
         current_section_text = ""
         current_page_range = None
         project_name = Path(file_path).stem
-        
+
         # Track semantic boundaries
         semantic_markers = {
             "section_start": ["introduction", "overview", "about", "features", "specifications", 
@@ -235,18 +235,18 @@ class DocumentProcessor:
                              "contact", "timeline", "schedule", "terms", "conditions"],
             "important_elements": ["title", "header", "heading", "subheading", "table", "list"]
         }
-        
+
         for element in elements:
             if not element.get("text"):
                 continue
-                
+
             text = element["text"].strip()
             if len(text) < 20:  # Skip very short elements
                 continue
-            
+
             element_type = element.get("type", "unknown").lower()
             page_num = element.get("page_number", None)
-            
+
             # Detect semantic boundaries
             is_semantic_boundary = (
                 element_type in semantic_markers["important_elements"] or
@@ -254,13 +254,13 @@ class DocumentProcessor:
                 len(current_section_text) > 1000 or  # Length-based boundary
                 (page_num and current_page_range and abs(page_num - current_page_range[-1]) > 1)  # Page boundary
             )
-            
+
             if is_semantic_boundary and current_section:
                 # Create document from current section
                 doc_text = "\n".join(sec["text"].strip() for sec in current_section)
                 start_page = current_section[0].get("page_number")
                 end_page = current_section[-1].get("page_number")
-                
+
                 # Extract semantic context
                 semantic_context = {
                     "source": file_path,
@@ -277,30 +277,30 @@ class DocumentProcessor:
                     "text_length": len(doc_text),
                     "paragraph_count": doc_text.count('\n\n') + 1
                 }
-                
+
                 documents.append(
                     Document(
                         page_content=doc_text,
                         metadata=semantic_context
                     )
                 )
-                
+
                 current_section = []
                 current_section_text = ""
                 current_page_range = []
-            
+
             current_section.append(element)
             current_section_text += f"\n{text}"
             if page_num:
                 current_page_range = current_page_range or []
                 current_page_range.append(page_num)
-        
+
         # Process the last section
         if current_section:
             doc_text = "\n".join(sec["text"].strip() for sec in current_section)
             start_page = current_section[0].get("page_number")
             end_page = current_section[-1].get("page_number")
-            
+
             semantic_context = {
                 "source": file_path,
                 "project": project_name,
@@ -316,14 +316,14 @@ class DocumentProcessor:
                 "text_length": len(doc_text),
                 "paragraph_count": doc_text.count('\n\n') + 1
             }
-            
+
             documents.append(
                 Document(
                     page_content=doc_text,
                     metadata=semantic_context
                 )
             )
-        
+
         return documents
 
     def create_or_update_index(self, pdf_directory: str, existing_index_path: Optional[str] = None) -> FAISS:
@@ -333,25 +333,25 @@ class DocumentProcessor:
             pdf_files = list(Path(pdf_directory).glob("*.pdf"))
             if not pdf_files:
                 raise ValueError(f"No PDF files found in {pdf_directory}")
-            
+
             all_docs = []
             for pdf_file in pdf_files:
                 docs = self.process_pdf(str(pdf_file))
                 all_docs.extend(docs)
-            
+
             if not all_docs:
                 raise ValueError("No valid documents extracted from PDFs")
-            
+
             # Create new vectorstore
             texts = [doc.page_content for doc in all_docs]
             metadatas = [doc.metadata for doc in all_docs]
-            
+
             new_db = FAISS.from_texts(
                 texts,
                 self.embeddings,
                 metadatas=metadatas
             )
-            
+
             # If updating existing index
             if existing_index_path and Path(existing_index_path).exists():
                 try:
@@ -366,13 +366,13 @@ class DocumentProcessor:
                 except Exception as e:
                     logger.error(f"Error updating existing index: {e}")
                     logger.info("Creating new index instead")
-            
+
             # Save the index
             new_db.save_local(Config.FAISS_INDEX_PATH)
             logger.info(f"Saved index with {len(texts)} documents to {Config.FAISS_INDEX_PATH}")
-            
+
             return new_db
-            
+
         except Exception as e:
             logger.error(f"Error creating/updating index: {str(e)}")
             raise
@@ -385,30 +385,32 @@ class DocumentProcessor:
                 self.embeddings,
                 allow_dangerous_deserialization=True
             )
-            
+
             # More specific test queries
             test_queries = [
-                # Project-specific queries
-                "What are the key features and amenities of Urban Dwellings project specifically?",
-                "Tell me about the location and surroundings of Elements Residencia",
-                "What is the investment structure and payment plan for Globe Residency in Naya Nazimabad?",
-                "Describe the amenities and facilities available in Broad Peak Realty",
-                "When will Project Akron be completed and what is its timeline?",
-                
-                # Cross-project queries
-                "Compare the payment plans available across different projects",
-                "Who are the developers and partners for each project?",
-                "What are the environmental and sustainability features in these projects?",
-                
-                # Specific detail queries
-                "What is the total number of units in Urban Dwellings?",
-                "What is the exact location of Elements Residencia in Bahria Town?",
-                "What are the security features in Broad Peak Realty?"
+                # Urban Dwellings
+                "What is the exact location of Urban Dwellings project?",
+                "What is the expected ROI or return on investment for Urban Dwellings?",
+                # Elements Residencia
+                "Where exactly is Elements Residencia located?",
+                "What is the projected ROI for Elements Residencia investment?",
+                # Naya Nazimabad
+                "What is the location of Globe Residency in Naya Nazimabad?",
+                "What ROI or investment returns can I expect from Globe Residency Naya Nazimabad?",
+                # Broad Peak Realty
+                "Where is Broad Peak Realty located?",
+                "What is the expected ROI for Broad Peak Realty investment?",
+                # Akron
+                "What is the exact location of Project Akron?",
+                "What is the projected return on investment (ROI) for Project Akron?",
+                # Cross-project comparisons
+                "Compare the locations of all projects: Urban Dwellings, Elements Residencia, Naya Nazimabad, Broad Peak Realty, and Akron",
+                "Which project offers the best ROI among Urban Dwellings, Elements Residencia, Naya Nazimabad, Broad Peak Realty, and Akron?",
             ]
-            
+
             logger.info("\nVerification Results:")
             project_coverage = defaultdict(int)
-            
+
             for query in test_queries:
                 logger.info(f"\nTesting query: {query}")
                 docs = vectorstore.similarity_search(
@@ -416,28 +418,28 @@ class DocumentProcessor:
                     k=3,
                     filter=None  # Allow all projects to be searched
                 )
-                
+
                 projects_found = set()
                 for doc in docs:
                     project = doc.metadata.get("project", "unknown")
                     projects_found.add(project)
                     page_range = doc.metadata.get("page_range", "unknown")
                     section_title = doc.metadata.get("section_title", "unknown")
-                    
+
                     logger.info(f"\nProject: {project}")
                     logger.info(f"Pages: {page_range}")
                     logger.info(f"Section: {section_title}")
                     logger.info(f"Preview: {doc.page_content[:200]}...")
-                    
+
                     project_coverage[project] += 1
-                
+
                 logger.info(f"Projects found for query: {', '.join(projects_found)}")
-            
+
             # Report coverage
             logger.info("\nProject Coverage in Queries:")
             for project, count in project_coverage.items():
                 logger.info(f"{project}: appeared in {count} query results")
-            
+
         except Exception as e:
             logger.error(f"Error verifying index: {e}")
             raise
