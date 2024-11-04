@@ -2,7 +2,7 @@ import * as React from 'react'
 import { useState, useCallback, useRef, lazy, Suspense } from 'react'
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
-import { ScrollArea } from "./ui/scroll-area"
+import { ScrollArea, ScrollBar } from "./ui/scroll-area"
 import { SendIcon, BotIcon, UserIcon, Loader2Icon, SunIcon, MoonIcon } from 'lucide-react'
 import axios from 'axios'
 import remarkGfm from 'remark-gfm'  // Add this import
@@ -219,6 +219,12 @@ export default function ChatbotPage() {
               )}
               <div ref={messagesEndRef} />
             </div>
+            <ScrollBar 
+              orientation="vertical" 
+              className={`w-2 rounded-full transition-colors duration-200 ease-out ${
+                isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
+              }`}
+            />
           </ScrollArea>
         )}
 
