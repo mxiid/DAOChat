@@ -25,6 +25,7 @@ from PyPDF2 import PdfWriter
 import tempfile
 import json
 from collections import defaultdict
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -220,55 +221,70 @@ class DocumentProcessor:
         return []
 
     def _create_documents_from_elements(self, elements: List[Dict], file_path: str) -> List[Document]:
-        """Create semantic documents with better metadata and chunking"""
+        """Create semantic documents with content-aware chunking"""
         documents = []
         current_section = []
         current_section_text = ""
         current_page_range = None
         project_name = Path(file_path).stem
         
-        # Group elements by section while preserving page numbers
+        # Track semantic boundaries
+        semantic_markers = {
+            "section_start": ["introduction", "overview", "about", "features", "specifications", 
+                             "pricing", "location", "payment", "amenities", "floor plan",
+                             "contact", "timeline", "schedule", "terms", "conditions"],
+            "important_elements": ["title", "header", "heading", "subheading", "table", "list"]
+        }
+        
         for element in elements:
             if not element.get("text"):
                 continue
                 
             text = element["text"].strip()
-            if len(text) < 10:  # Skip very short elements
+            if len(text) < 20:  # Skip very short elements
                 continue
             
-            # Get page number from element
+            element_type = element.get("type", "unknown").lower()
             page_num = element.get("page_number", None)
-            element_type = element.get("type", "unknown")
             
-            # Start new section if:
-            # 1. New major section header found
-            # 2. Current section is too long
-            # 3. Page changed significantly
-            should_start_new_section = (
-                element_type in ["Title", "Header", "Heading"] or
-                len(current_section_text) > 1000 or
-                (page_num and current_page_range and abs(page_num - current_page_range[-1]) > 1)
+            # Detect semantic boundaries
+            is_semantic_boundary = (
+                element_type in semantic_markers["important_elements"] or
+                any(marker in text.lower() for marker in semantic_markers["section_start"]) or
+                len(current_section_text) > 1000 or  # Length-based boundary
+                (page_num and current_page_range and abs(page_num - current_page_range[-1]) > 1)  # Page boundary
             )
             
-            if should_start_new_section and current_section:
+            if is_semantic_boundary and current_section:
                 # Create document from current section
                 doc_text = "\n".join(sec["text"].strip() for sec in current_section)
                 start_page = current_section[0].get("page_number")
                 end_page = current_section[-1].get("page_number")
-                page_range = f"{start_page}-{end_page}" if start_page and end_page else "unknown"
+                
+                # Extract semantic context
+                semantic_context = {
+                    "source": file_path,
+                    "project": project_name,
+                    "page_range": f"{start_page}-{end_page}" if start_page and end_page else "unknown",
+                    "section_type": current_section[0].get("type", "unknown"),
+                    "section_title": current_section[0].get("text", "")[:100],
+                    "content_structure": element_type,
+                    "semantic_markers": [marker for marker in semantic_markers["section_start"] 
+                                          if marker in doc_text.lower()],
+                    "contains_numerical_data": bool(re.search(r'\d+', doc_text)),
+                    "contains_lists": bool(re.search(r'(?:^|\n)\s*[•\-\d]+\.?\s+', doc_text)),
+                    "contains_tables": bool(re.search(r'\|\s*\w+\s*\|', doc_text)),
+                    "text_length": len(doc_text),
+                    "paragraph_count": doc_text.count('\n\n') + 1
+                }
                 
                 documents.append(
                     Document(
                         page_content=doc_text,
-                        metadata={
-                            "source": file_path,
-                            "project": project_name,
-                            "page_range": page_range,
-                            "section_type": current_section[0].get("type", "unknown"),
-                            "section_title": current_section[0].get("text", "")[:100]  # Store section title
-                        }
+                        metadata=semantic_context
                     )
                 )
+                
                 current_section = []
                 current_section_text = ""
                 current_page_range = []
@@ -279,23 +295,32 @@ class DocumentProcessor:
                 current_page_range = current_page_range or []
                 current_page_range.append(page_num)
         
-        # Don't forget the last section
+        # Process the last section
         if current_section:
             doc_text = "\n".join(sec["text"].strip() for sec in current_section)
             start_page = current_section[0].get("page_number")
             end_page = current_section[-1].get("page_number")
-            page_range = f"{start_page}-{end_page}" if start_page and end_page else "unknown"
+            
+            semantic_context = {
+                "source": file_path,
+                "project": project_name,
+                "page_range": f"{start_page}-{end_page}" if start_page and end_page else "unknown",
+                "section_type": current_section[0].get("type", "unknown"),
+                "section_title": current_section[0].get("text", "")[:100],
+                "content_structure": element_type,
+                "semantic_markers": [marker for marker in semantic_markers["section_start"] 
+                                      if marker in doc_text.lower()],
+                "contains_numerical_data": bool(re.search(r'\d+', doc_text)),
+                "contains_lists": bool(re.search(r'(?:^|\n)\s*[•\-\d]+\.?\s+', doc_text)),
+                "contains_tables": bool(re.search(r'\|\s*\w+\s*\|', doc_text)),
+                "text_length": len(doc_text),
+                "paragraph_count": doc_text.count('\n\n') + 1
+            }
             
             documents.append(
                 Document(
                     page_content=doc_text,
-                    metadata={
-                        "source": file_path,
-                        "project": project_name,
-                        "page_range": page_range,
-                        "section_type": current_section[0].get("type", "unknown"),
-                        "section_title": current_section[0].get("text", "")[:100]
-                    }
+                    metadata=semantic_context
                 )
             )
         
