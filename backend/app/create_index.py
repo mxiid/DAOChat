@@ -86,17 +86,27 @@ def main(verify_only=False, force_rebuild=False):
                 index_path.unlink()
         
         if not verify_only:
-            # Process all PDFs
             all_docs = []
             logger.info("Starting document processing...")
             
-            # Process PDFs and collect documents
-            pdf_files = list(data_dir.glob("*.pdf"))
-            for pdf_file in pdf_files:
-                logger.info(f"Processing {pdf_file.name}...")
-                docs = processor.process_pdf(str(pdf_file))
-                all_docs.extend(docs)
-                logger.info(f"Successfully processed {len(docs)} sections from {pdf_file.name}")
+            # Process all supported file types
+            file_processors = {
+                "*.pdf": processor.process_pdf,
+                "*.md": processor.process_markdown,
+                "*.csv": processor.process_csv
+            }
+            
+            for pattern, proc_func in file_processors.items():
+                files = list(data_dir.glob(pattern))
+                for file in files:
+                    logger.info(f"Processing {file.name}...")
+                    try:
+                        docs = proc_func(str(file))
+                        all_docs.extend(docs)
+                        logger.info(f"Successfully processed {len(docs)} sections from {file.name}")
+                    except Exception as e:
+                        logger.error(f"Error processing {file.name}: {str(e)}")
+                        continue
             
             # Create new index
             logger.info("\nCreating new FAISS index...")

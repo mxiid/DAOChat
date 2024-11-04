@@ -26,6 +26,8 @@ import tempfile
 import json
 from collections import defaultdict
 import re
+import pandas as pd
+import frontmatter  # pip install python-frontmatter
 
 logger = logging.getLogger(__name__)
 
@@ -326,21 +328,32 @@ class DocumentProcessor:
 
         return documents
 
-    def create_or_update_index(self, pdf_directory: str, existing_index_path: Optional[str] = None) -> FAISS:
-        """Create or update FAISS index from a directory of PDFs"""
+    def create_or_update_index(self, directory: str, existing_index_path: Optional[str] = None) -> FAISS:
+        """Create or update FAISS index from documents"""
         try:
-            # Process all PDFs in directory
-            pdf_files = list(Path(pdf_directory).glob("*.pdf"))
-            if not pdf_files:
-                raise ValueError(f"No PDF files found in {pdf_directory}")
-
+            # Process all supported file types
             all_docs = []
-            for pdf_file in pdf_files:
-                docs = self.process_pdf(str(pdf_file))
-                all_docs.extend(docs)
+            
+            # Define supported file types and their processors
+            file_processors = {
+                "*.pdf": self.process_pdf,
+                "*.md": self.process_markdown,
+                "*.csv": self.process_csv
+            }
+            
+            # Process each file type
+            for pattern, processor in file_processors.items():
+                files = list(Path(directory).glob(pattern))
+                for file in files:
+                    try:
+                        docs = processor(str(file))
+                        all_docs.extend(docs)
+                    except Exception as e:
+                        logger.error(f"Error processing {file}: {e}")
+                        continue
 
             if not all_docs:
-                raise ValueError("No valid documents extracted from PDFs")
+                raise ValueError(f"No valid documents found in {directory}")
 
             # Create new vectorstore
             texts = [doc.page_content for doc in all_docs]
@@ -442,4 +455,96 @@ class DocumentProcessor:
 
         except Exception as e:
             logger.error(f"Error verifying index: {e}")
+            raise
+
+    def process_markdown(self, file_path: str) -> List[Document]:
+        """Process markdown files with frontmatter"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                # Parse frontmatter and content
+                post = frontmatter.load(f)
+                
+                # Extract metadata from frontmatter
+                metadata = {
+                    "source": file_path,
+                    "project": post.metadata.get("project", Path(file_path).stem),
+                    "document_type": "markdown",
+                    **post.metadata  # Include all frontmatter metadata
+                }
+                
+                # Split content into chunks
+                chunks = self.text_splitter.split_text(post.content)
+                
+                documents = []
+                for i, chunk in enumerate(chunks):
+                    chunk_metadata = {
+                        **metadata,
+                        "chunk_index": i,
+                        "contains_numerical_data": bool(re.search(r'\d+', chunk)),
+                        "contains_lists": bool(re.search(r'(?:^|\n)\s*[•\-\d]+\.?\s+', chunk)),
+                        "contains_tables": bool(re.search(r'\|\s*\w+\s*\|', chunk)),
+                        "text_length": len(chunk)
+                    }
+                    
+                    documents.append(
+                        Document(
+                            page_content=chunk,
+                            metadata=chunk_metadata
+                        )
+                    )
+                
+                return documents
+                
+        except Exception as e:
+            logger.error(f"Error processing markdown {file_path}: {str(e)}")
+            raise
+
+    def process_csv(self, file_path: str) -> List[Document]:
+        """Process CSV files into structured documents"""
+        try:
+            # Try different encodings
+            encodings = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
+            df = None
+            
+            for encoding in encodings:
+                try:
+                    df = pd.read_csv(file_path, encoding=encoding)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            
+            if df is None:
+                raise ValueError(f"Could not read CSV with any of the attempted encodings: {encodings}")
+                
+            # Rest of the processing...
+            documents = []
+            for idx, row in df.iterrows():
+                content_parts = []
+                for col, value in row.items():
+                    if pd.notna(value):
+                        content_parts.append(f"{col}: {value}")
+                
+                content = "\n".join(content_parts)
+                
+                metadata = {
+                    "source": file_path,
+                    "project": Path(file_path).stem,
+                    "document_type": "csv",
+                    "row_index": idx,
+                    "contains_numerical_data": any(isinstance(v, (int, float)) for v in row if pd.notna(v)),
+                    "columns": list(df.columns),
+                    "text_length": len(content)
+                }
+                
+                documents.append(
+                    Document(
+                        page_content=content,
+                        metadata=metadata
+                    )
+                )
+            
+            return documents
+                
+        except Exception as e:
+            logger.error(f"Error processing CSV {file_path}: {str(e)}")
             raise
