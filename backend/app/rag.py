@@ -32,7 +32,7 @@ class RAG:
         try:
             self.embeddings = OpenAIEmbeddings()
             self.vectordb = self._load_vectordb()
-            self.llm = ChatOpenAI(temperature=0, model_name='gpt-4o')
+            self.llm = ChatOpenAI(temperature=0, model_name='gpt-4')
             self.prompt_template = self._create_prompt_template()
             self.memory = ConversationBufferMemory(
                 memory_key="chat_history",
@@ -145,7 +145,8 @@ class RAG:
         try:
             qa_chain = ConversationalRetrievalChain.from_llm(
                 llm=self.llm,
-                retriever=self.vectordb.as_retriever(search_kwargs={"k": 4}),
+                retriever=self.vectordb.as_retriever(search_kwargs={"k": 8}),
+                search_type="mmr",
                 memory=self.memory,
                 combine_docs_chain_kwargs={"prompt": self.prompt_template},
                 return_source_documents=True,
