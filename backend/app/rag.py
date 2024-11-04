@@ -143,17 +143,43 @@ class RAG:
 
     async def query(self, question: str) -> str:
         try:
+            # Detect if the question is asking for a table or comparison
+            table_keywords = ['table', 'compare', 'comparison', 'list', 'price', 'cost', 'per']
+            is_table_request = any(keyword in question.lower() for keyword in table_keywords)
+            
+            # Configure the retriever separately
+            search_kwargs = {
+                "k": 10 if is_table_request else 4,  # Get more context for tables
+                "fetch_k": 20 if is_table_request else 8,  # Fetch more candidates
+            }
+            
+            # Create retriever with MMR search type
+            retriever = self.vectordb.as_retriever(
+                search_type="mmr",
+                search_kwargs=search_kwargs
+            )
+            
             qa_chain = ConversationalRetrievalChain.from_llm(
                 llm=self.llm,
-                retriever=self.vectordb.as_retriever(search_kwargs={"k": 8}),
-                search_type="mmr",
+                retriever=retriever,
                 memory=self.memory,
                 combine_docs_chain_kwargs={"prompt": self.prompt_template},
                 return_source_documents=True,
                 return_generated_question=True,
                 output_key="answer"
             )
-            result = await qa_chain.ainvoke({"question": question})
+            
+            if is_table_request:
+                # Enhance table-specific questions
+                enhanced_question = f"""
+                Create a markdown table for this request. Include ALL available data points.
+                If you find numerical data in the context, you MUST include it.
+                Original question: {question}
+                """
+                result = await qa_chain.ainvoke({"question": enhanced_question})
+            else:
+                result = await qa_chain.ainvoke({"question": question})
+                
             return result['answer']
         except Exception as e:
             logger.error(f"Error in query method: {str(e)}", exc_info=True)
