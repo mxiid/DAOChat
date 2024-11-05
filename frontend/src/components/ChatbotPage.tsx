@@ -219,18 +219,18 @@ export default function ChatbotPage() {
   }, [messages])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInput(e.target.value);
-  };
+    setInput(e.target.value)
+  }
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !isThinking) {
-      handleSendMessage(input);
+    if (e.key === 'Enter' && !isThinking && input.trim()) {
+      handleSendMessage(input)
     }
-  };
+  }
 
   return (
-    <div className={`flex flex-col h-screen ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-800'}`}>
-      <header className="bg-gradient-to-r from-[#0066FF] to-[#00FFFF] p-4 text-white font-bold flex items-center justify-between">
+    <div className={`flex flex-col min-h-[100dvh] ${isDarkMode ? 'dark bg-gray-900' : 'bg-white'}`}>
+      <header className="bg-gradient-to-r from-[#0066FF] to-[#00FFFF] p-4 text-white font-bold flex items-center justify-between sticky top-0 z-50 shadow-md">
         <div className="flex items-center">
           <BotIcon className="mr-2" />
           <span className="text-lg">DAO PropTech Assistant</span>
@@ -245,19 +245,23 @@ export default function ChatbotPage() {
         </Button>
       </header>
 
-      <main className="flex-grow flex flex-col overflow-hidden relative">
+      <main className="flex-1 flex flex-col overflow-hidden relative pb-[env(safe-area-inset-bottom)]">
         {messages.length === 0 && <GeometricShapes />}
         
         {messages.length === 0 ? (
-          <div className="flex-grow flex flex-col items-center justify-center px-4">
-            <h2 className="text-2xl font-semibold text-center mb-8">How can I assist you with real estate investments today?</h2>
+          <div className="flex-1 flex flex-col items-center justify-center px-4 py-8">
+            <h2 className={`text-2xl font-semibold text-center mb-8 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
+              How can I assist you with real estate investments today?
+            </h2>
             <div className="w-full max-w-md space-y-4">
               {staticSuggestedQuestions.map((question, index) => (
                 <Button
                   key={index}
                   variant="outline"
                   onClick={() => handleSendMessage(question)}
-                  className={`w-full text-left ${isDarkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-white hover:bg-gray-100'}`}
+                  className={`w-full text-left justify-start h-auto whitespace-normal ${
+                    isDarkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-white hover:bg-gray-100 text-gray-800'
+                  }`}
                 >
                   {question}
                 </Button>
@@ -265,47 +269,59 @@ export default function ChatbotPage() {
             </div>
           </div>
         ) : (
-          <ScrollArea className="flex-grow px-4 py-2">
-            <div className="max-w-3xl mx-auto">
-              {messages.map((message, index) => (
-                <MessageComponent key={index} message={message} isDarkMode={isDarkMode} />
-              ))}
-              {isThinking && (
-                <div className="flex items-center mb-4">
-                  <BotIcon className="w-6 h-6 mr-2 text-[#00FFFF]" />
-                  <div className={`${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'} rounded-lg p-3`}>
-                    <Loader2Icon className="w-4 h-4 animate-spin text-[#00FFFF]" />
-                  </div>
+          <div className="flex-1 relative">
+            <ScrollArea className="h-full absolute inset-0">
+              <div className="px-4 py-2">
+                <div className="max-w-3xl mx-auto">
+                  {messages.map((message, index) => (
+                    <MessageComponent key={index} message={message} isDarkMode={isDarkMode} />
+                  ))}
+                  {isThinking && (
+                    <div className="flex items-center mb-4">
+                      <BotIcon className="w-6 h-6 mr-2 text-[#00FFFF]" />
+                      <div className={`${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'} rounded-lg p-3`}>
+                        <Loader2Icon className="w-4 h-4 animate-spin text-[#00FFFF]" />
+                      </div>
+                    </div>
+                  )}
+                  <div ref={messagesEndRef} />
                 </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-            <ScrollBar 
-              orientation="vertical" 
-              className={`w-2 rounded-full transition-colors duration-200 ease-out ${
-                isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
-              }`}
-            />
-          </ScrollArea>
+              </div>
+              <ScrollBar orientation="vertical" />
+            </ScrollArea>
+          </div>
         )}
 
-        <div className="p-4 flex justify-center">
-          <div className={`flex space-x-2 w-full max-w-2xl rounded-full shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-            <Input
-              value={input}
-              onChange={handleInputChange}
-              onKeyPress={handleKeyPress}
-              placeholder={messages.length === 0 ? "Ask me anything about real estate investments..." : "Type your message..."}
-              className={`flex-grow rounded-l-full border-0 focus:ring-0 ${isDarkMode ? 'bg-gray-800 text-white placeholder-gray-400' : 'bg-white text-gray-800 placeholder-gray-500'}`}
-              disabled={isThinking}
-            />
-            <Button
-              onClick={() => handleSendMessage(input)}
-              className={`rounded-r-full ${isThinking ? 'bg-gray-500' : 'bg-[#ADFF2F] hover:bg-[#9ACD32]'} text-black`}
-              disabled={isThinking}
-            >
-              {isThinking ? <Loader2Icon className="w-4 h-4 animate-spin" /> : <SendIcon className="w-4 h-4" />}
-            </Button>
+        <div className="sticky bottom-0 z-50">
+          <div className="p-4 bg-gradient-to-t from-inherit via-inherit to-transparent">
+            <div className={`flex space-x-2 w-full max-w-2xl mx-auto rounded-full shadow-lg ${
+              isDarkMode ? 'bg-gray-800' : 'bg-white'
+            }`}>
+              <Input
+                value={input}
+                onChange={handleInputChange}
+                onKeyPress={handleKeyPress}
+                placeholder={messages.length === 0 ? "Ask me anything about real estate investments..." : "Type your message..."}
+                className={`flex-grow rounded-l-full border-0 focus:ring-0 ${
+                  isDarkMode ? 'bg-gray-800 text-white placeholder-gray-400' : 'bg-white text-gray-800 placeholder-gray-500'
+                }`}
+                disabled={isThinking}
+              />
+              <Button
+                onClick={() => handleSendMessage(input)}
+                className={`rounded-r-full ${
+                  isThinking ? 'bg-gray-500' : 'bg-[#ADFF2F] hover:bg-[#9ACD32]'
+                } text-black`}
+                disabled={isThinking || !input.trim()}
+              >
+                {isThinking ? <Loader2Icon className="w-4 h-4 animate-spin" /> : <SendIcon className="w-4 h-4" />}
+              </Button>
+            </div>
+          </div>
+          <div className={`text-center text-sm pb-2 ${
+            isDarkMode ? 'text-gray-400' : 'text-gray-500'
+          }`}>
+            DAO Chat may make mistakes. Please use with discretion.
           </div>
         </div>
       </main>
