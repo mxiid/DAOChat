@@ -1,3 +1,5 @@
+"use client"
+
 import * as React from 'react'
 import { useState, useCallback, useRef, lazy, Suspense } from 'react'
 import { Button } from "./ui/button"
@@ -79,53 +81,66 @@ const useChatbot = () => {
   return { messages, input, setInput, isThinking, handleSendMessage }
 }
 
-const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message, isDarkMode: boolean }) => (
-  <div className={`flex items-start mb-4 ${message.role === 'user' ? 'justify-end' : ''}`}>
-    {message.role === 'bot' && <BotIcon className="w-5 h-5 sm:w-6 sm:h-6 mr-2 text-[#00FFFF] flex-shrink-0" />}
-    <div className={`rounded-lg p-2 sm:p-3 max-w-[80%] ${message.role === 'user'
-        ? 'bg-[#ADFF2F] text-black'
-        : isDarkMode ? 'bg-gray-700' : 'bg-gray-200'
-      }`}>
-      {message.role === 'user' ? (
+const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message; isDarkMode: boolean }) => (
+  <div className={`flex items-start mb-4 ${message.role === "user" ? "justify-end" : ""}`}>
+    {message.role === "bot" && <BotIcon className="w-5 h-5 sm:w-6 sm:h-6 mr-2 text-[#00FFFF] flex-shrink-0" />}
+    <div
+      className={`rounded-lg p-2 sm:p-3 max-w-[80%] ${
+        message.role === "user" ? "bg-[#ADFF2F] text-black" : isDarkMode ? "bg-gray-700" : "bg-gray-200"
+      }`}
+    >
+      {message.role === "user" ? (
         <p className="text-sm sm:text-base break-words">{message.content}</p>
       ) : (
         <Suspense fallback={<div>Loading...</div>}>
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}  // Add this line
-            className={`prose prose-sm max-w-none break-words ${isDarkMode ? 'dark' : ''}`}
+            remarkPlugins={[remarkGfm]}
+            className={`prose prose-sm max-w-none break-words ${isDarkMode ? "prose-invert" : ""}`}
             components={{
-              a: ({ node, ...props }) => <a {...props} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer">{props.children}</a>,
-              p: ({ node, ...props }) => <p {...props} className={`mb-2 text-sm sm:text-base ${isDarkMode ? 'text-white' : 'text-black'}`} />,
-              ul: ({ node, ...props }) => <ul {...props} className="list-disc list-inside mb-2" />,
-              ol: ({ node, ...props }) => <ol {...props} className="list-decimal list-inside mb-2" />,
-              li: ({ node, ...props }) => <li {...props} className={`mb-1 ${isDarkMode ? 'text-white' : 'text-black'}`} />,
-              h1: ({ node, ...props }) => <h1 {...props} className={`text-xl font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-black'}`}>{props.children}</h1>,
-              h2: ({ node, ...props }) => <h2 {...props} className={`text-lg font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-black'}`}>{props.children}</h2>,
-              h3: ({ node, ...props }) => <h3 {...props} className={`text-md font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-black'}`}>{props.children}</h3>,
+              a: ({ node, ...props }) => (
+                <a {...props} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer" />
+              ),
+              p: ({ node, ...props }) => (
+                <p {...props} className={`mb-2 text-sm sm:text-base ${isDarkMode ? "text-white" : "text-black"}`} />
+              ),
+              ul: ({ node, ...props }) => (
+                <ul {...props} className="list-disc ml-4 space-y-2 mb-2" />
+              ),
+              ol: ({ node, ...props }) => (
+                <ol {...props} className="list-decimal ml-4 space-y-2 mb-2" />
+              ),
+              li: ({ node, ...props }) => (
+                <li {...props} className={`${isDarkMode ? "text-white" : "text-black"}`} />
+              ),
+              strong: ({ node, ...props }) => (
+                <strong {...props} className={`font-bold ${isDarkMode ? "text-white" : "text-black"}`} />
+              ),
+              h1: ({ node, ...props }) => (
+                <h1 {...props} className={`text-xl font-bold mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
+              ),
+              h2: ({ node, ...props }) => (
+                <h2 {...props} className={`text-lg font-bold mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
+              ),
+              h3: ({ node, ...props }) => (
+                <h3 {...props} className={`text-base font-bold mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
+              ),
               code: ({ node, className, children, ...props }) => {
-                const match = /language-(\w+)/.exec(className || '')
+                const match = /language-(\w+)/.exec(className || "")
                 return match ? (
-                  <pre className="bg-gray-100 rounded p-2 mb-2 overflow-x-auto">
+                  <pre className={`bg-gray-100 rounded p-2 mb-2 overflow-x-auto ${isDarkMode ? "bg-gray-800" : ""}`}>
                     <code className={`language-${match[1]}`} {...props}>
                       {children}
                     </code>
                   </pre>
                 ) : (
-                  <code {...props} className={`bg-gray-100 rounded px-1 py-0.5 ${isDarkMode ? 'text-black' : ''}`}>
+                  <code
+                    {...props}
+                    className={`bg-gray-100 rounded px-1 py-0.5 ${isDarkMode ? "bg-gray-800 text-white" : "text-black"}`}
+                  >
                     {children}
                   </code>
                 )
               },
-              table: ({node, ...props}) => (
-                <table {...props} className={`border-collapse border ${isDarkMode ? 'border-gray-600' : 'border-gray-300'} my-2`} />
-              ),
-              thead: ({node, ...props}) => (
-                <thead {...props} className={isDarkMode ? 'bg-gray-800' : 'bg-gray-100'} />
-              ),
-              tbody: ({node, ...props}) => <tbody {...props} />,
-              tr: ({node, ...props}) => <tr {...props} className="border-b border-gray-300" />,
-              th: ({node, ...props}) => <th {...props} className="border border-gray-300 px-4 py-2 text-left" />,
-              td: ({node, ...props}) => <td {...props} className="border border-gray-300 px-4 py-2" />,
             }}
           >
             {message.content}
@@ -133,7 +148,7 @@ const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message
         </Suspense>
       )}
     </div>
-    {message.role === 'user' && <UserIcon className="w-5 h-5 sm:w-6 sm:h-6 ml-2 text-[#ADFF2F] flex-shrink-0" />}
+    {message.role === "user" && <UserIcon className="w-5 h-5 sm:w-6 sm:h-6 ml-2 text-[#ADFF2F] flex-shrink-0" />}
   </div>
 ))
 
