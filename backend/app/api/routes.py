@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
 from pydantic import BaseModel
 from typing import List
 import logging
-from ..rag import ask_question, suggest_questions
+from ..rag import ask_question, suggest_questions, rag_instance
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 

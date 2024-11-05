@@ -21,6 +21,7 @@ import tiktoken
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 import multiprocessing
+from fastapi import HTTPException
 
 # At the top of your file, after imports
 os.environ['TIKTOKEN_CACHE_DIR'] = '/app/tiktoken'
@@ -177,7 +178,6 @@ class RAG:
             """
         return PromptTemplate(template=template, input_variables=["context", "chat_history", "question"])
 
-    @lru_cache(maxsize=1000)
     @lru_cache(maxsize=1000)
     async def _process_request(self, question: str, session_id: str):
         try:
