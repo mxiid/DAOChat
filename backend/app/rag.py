@@ -245,11 +245,6 @@ class RAG:
                         detail="System is currently overloaded. Please try again later."
                     )
 
-                # Cache check
-                cache_key = f"{session_id}:{question}"
-                if cache_key in self.response_cache:
-                    return self.response_cache[cache_key]
-
                 # Process request
                 result = await self._process_request(question, session_id)
                 self.request_queue.task_done()

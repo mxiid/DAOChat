@@ -55,10 +55,7 @@ async def cleanup_session(session_id: str):
     try:
         if session_id in rag_instance.memory_pools:
             del rag_instance.memory_pools[session_id]
-        if hasattr(rag_instance.response_cache, 'cache'):
-            cache = rag_instance.response_cache.cache
-            keys_to_delete = [k for k in cache.keys() if k.startswith(f"{session_id}:")]
-            for k in keys_to_delete:
-                del cache[k]
+        # Clear the LRU cache for this session
+        rag_instance._process_request.cache_clear()
     except Exception as e:
         logger.error(f"Error cleaning up session {session_id}: {e}")
