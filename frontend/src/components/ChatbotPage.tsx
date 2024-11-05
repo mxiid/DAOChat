@@ -318,10 +318,10 @@ export default function ChatbotPage() {
               </Button>
             </div>
           </div>
-          <div className={`text-center text-sm pb-2 ${
+          <div className={`text-center text-xs pb-1 ${
             isDarkMode ? 'text-gray-400' : 'text-gray-500'
           }`}>
-            DAO Chat may make mistakes. Please use with discretion.
+            DAO Chat may make mistakes. Use with discretion.
           </div>
         </div>
       </main>
