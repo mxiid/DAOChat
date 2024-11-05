@@ -18,6 +18,9 @@ from langchain_core.documents import Document
 from langchain.callbacks import AsyncIteratorCallbackHandler
 import asyncio
 import tiktoken
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
+import multiprocessing
 
 # At the top of your file, after imports
 os.environ['TIKTOKEN_CACHE_DIR'] = '/app/tiktoken'
@@ -39,6 +42,34 @@ class RAG:
                 return_messages=True,
                 output_key="answer"
             )
+
+            # CPU-bound task executor (70% of cores for CPU tasks)
+            self.cpu_executor = ThreadPoolExecutor(
+                max_workers=int(multiprocessing.cpu_count() * 0.7)
+            )
+            
+            # I/O-bound task executor (2x number of cores for I/O tasks)
+            self.io_executor = ThreadPoolExecutor(
+                max_workers=multiprocessing.cpu_count() * 2
+            )
+            
+            # Limit concurrent requests (based on available memory)
+            available_memory_gb = 31  # From MemAvailable
+            memory_per_request_mb = 500  # Estimated memory per request
+            max_concurrent = min(
+                int((available_memory_gb * 1024) / memory_per_request_mb),
+                50  # Hard cap at 50 concurrent requests
+            )
+            self.request_semaphore = asyncio.Semaphore(max_concurrent)
+            
+            # Request queue
+            self.request_queue = asyncio.Queue(maxsize=100)
+            
+            # Response cache (50MB max size)
+            self.response_cache = lru_cache(maxsize=100)(self._process_request)
+            
+            # Separate memory pools for different sessions
+            self.memory_pools = {}
         except Exception as e:
             logger.error(f"Error initializing RAG: {str(e)}", exc_info=True)
             raise
@@ -146,7 +177,8 @@ class RAG:
             """
         return PromptTemplate(template=template, input_variables=["context", "chat_history", "question"])
 
-    async def query(self, question: str) -> str:
+    @lru_cache(maxsize=1000)
+    async def _process_request(self, question: str, session_id: str):
         try:
             # Detect if the question is asking for a table or comparison
             table_keywords = ['table', 'compare', 'comparison', 'list', 'price', 'cost', 'per']
@@ -189,6 +221,35 @@ class RAG:
         except Exception as e:
             logger.error(f"Error in query method: {str(e)}", exc_info=True)
             raise
+
+    async def query(self, question: str, session_id: str = None) -> str:
+        async with self.request_semaphore:
+            try:
+                # Queue management
+                try:
+                    await asyncio.wait_for(
+                        self.request_queue.put(question), 
+                        timeout=5.0
+                    )
+                except asyncio.TimeoutError:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="System is currently overloaded. Please try again later."
+                    )
+
+                # Cache check
+                cache_key = f"{session_id}:{question}"
+                if cache_key in self.response_cache:
+                    return self.response_cache[cache_key]
+
+                # Process request
+                result = await self._process_request(question, session_id)
+                self.request_queue.task_done()
+                return result
+
+            except Exception as e:
+                logger.error(f"Error in query method: {str(e)}", exc_info=True)
+                raise
 
     async def generate_questions(self, context: str) -> list[str]:
         try:
