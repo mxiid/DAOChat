@@ -35,7 +35,7 @@ class RAG:
         try:
             self.embeddings = OpenAIEmbeddings()
             self.vectordb = self._load_vectordb()
-            self.llm = ChatOpenAI(temperature=0, model_name='gpt-4')
+            self.llm = ChatOpenAI(temperature=0, model_name='gpt-4o')
             self.prompt_template = self._create_prompt_template()
             self.memory = ConversationBufferMemory(
                 memory_key="chat_history",
@@ -178,19 +178,28 @@ class RAG:
         return PromptTemplate(template=template, input_variables=["context", "chat_history", "question"])
 
     @lru_cache(maxsize=1000)
+    @lru_cache(maxsize=1000)
     async def _process_request(self, question: str, session_id: str):
         try:
-            # Detect if the question is asking for a table or comparison
+            # Get or create session-specific memory
+            if session_id not in self.memory_pools:
+                self.memory_pools[session_id] = ConversationBufferMemory(
+                    memory_key="chat_history",
+                    return_messages=True,
+                    output_key="answer"
+                )
+            
+            memory = self.memory_pools[session_id]
+            
+            # Rest of your existing _process_request code, but use memory instead of self.memory
             table_keywords = ['table', 'compare', 'comparison', 'list', 'price', 'cost', 'per']
             is_table_request = any(keyword in question.lower() for keyword in table_keywords)
 
-            # Configure the retriever separately
             search_kwargs = {
-                "k": 10 if is_table_request else 4,  # Get more context for tables
-                "fetch_k": 20 if is_table_request else 8,  # Fetch more candidates
+                "k": 10 if is_table_request else 4,
+                "fetch_k": 20 if is_table_request else 8,
             }
 
-            # Create retriever with MMR search type
             retriever = self.vectordb.as_retriever(
                 search_type="mmr",
                 search_kwargs=search_kwargs
@@ -199,7 +208,7 @@ class RAG:
             qa_chain = ConversationalRetrievalChain.from_llm(
                 llm=self.llm,
                 retriever=retriever,
-                memory=self.memory,
+                memory=memory,  # Use session-specific memory
                 combine_docs_chain_kwargs={"prompt": self.prompt_template},
                 return_source_documents=True,
                 return_generated_question=True,
@@ -207,7 +216,6 @@ class RAG:
             )
 
             if is_table_request:
-                # Enhance table-specific questions
                 enhanced_question = f"""
                 Create a markdown table for this request. Include ALL available data points.
                 If you find numerical data in the context, you MUST include it.
@@ -219,7 +227,7 @@ class RAG:
 
             return result['answer']
         except Exception as e:
-            logger.error(f"Error in query method: {str(e)}", exc_info=True)
+            logger.error(f"Error in _process_request method: {str(e)}", exc_info=True)
             raise
 
     async def query(self, question: str, session_id: str = None) -> str:
@@ -270,7 +278,7 @@ class RAG:
             streaming=True,
             callbacks=[callback],
             temperature=0,
-            model_name='gpt-4'
+            model_name='gpt-4o'
         )
 
         qa_chain = ConversationalRetrievalChain.from_llm(
@@ -313,8 +321,8 @@ class RAG:
 rag_instance = RAG()
 
 # Define the functions to be used in routes
-async def ask_question(question: str) -> str:
-    return await rag_instance.query(question)
+async def ask_question(question: str, session_id: str) -> str:
+    return await rag_instance.query(question, session_id)
 
 async def suggest_questions(context: str) -> list[str]:
     return await rag_instance.generate_questions(context)

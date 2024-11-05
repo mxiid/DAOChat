@@ -44,3 +44,13 @@ async def suggest(context: str):
         return questions
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+async def cleanup_session(session_id: str):
+    """Cleanup session data after request completion"""
+    try:
+        if session_id in rag_instance.memory_pools:
+            del rag_instance.memory_pools[session_id]
+        if session_id in rag_instance.response_cache:
+            del rag_instance.response_cache[session_id]
+    except Exception as e:
+        logger.error(f"Error cleaning up session {session_id}: {e}")
