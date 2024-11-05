@@ -39,9 +39,7 @@ const useTheme = () => {
 }
 
 const useChatbot = () => {
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'bot', content: "Welcome to DAO PropTech's AI Investment Advisor! How can I assist you with our real estate offerings today?" }
-  ])
+  const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isThinking, setIsThinking] = useState(false)
 
