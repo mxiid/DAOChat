@@ -124,6 +124,54 @@ const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message
               h3: ({ node, ...props }) => (
                 <h3 {...props} className={`text-base font-bold mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
               ),
+              table: ({ node, ...props }) => (
+                <div className="overflow-x-auto my-4">
+                  <table
+                    {...props}
+                    className={`w-full border-collapse text-sm ${
+                      isDarkMode ? "text-white" : "text-black"
+                    }`}
+                  />
+                </div>
+              ),
+              thead: ({ node, ...props }) => (
+                <thead
+                  {...props}
+                  className={`${
+                    isDarkMode ? "bg-gray-800 text-white" : "bg-gray-100 text-black"
+                  }`}
+                />
+              ),
+              tbody: ({ node, ...props }) => (
+                <tbody
+                  {...props}
+                  className={`${
+                    isDarkMode ? "text-white" : "text-black"
+                  }`}
+                />
+              ),
+              tr: ({ node, ...props }) => (
+                <tr
+                  {...props}
+                  className={`border-b ${
+                    isDarkMode
+                      ? "border-gray-600 hover:bg-gray-800/50"
+                      : "border-gray-200 hover:bg-gray-50"
+                  }`}
+                />
+              ),
+              th: ({ node, ...props }) => (
+                <th
+                  {...props}
+                  className="px-4 py-2 text-left font-medium border-r last:border-r-0"
+                />
+              ),
+              td: ({ node, ...props }) => (
+                <td
+                  {...props}
+                  className="px-4 py-2 border-r last:border-r-0"
+                />
+              ),
               code: ({ node, className, children, ...props }) => {
                 const match = /language-(\w+)/.exec(className || "")
                 return match ? (
