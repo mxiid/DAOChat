@@ -5,6 +5,7 @@ import logging
 from ..rag import ask_question, suggest_questions, rag_instance
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+import time
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -53,9 +54,14 @@ async def suggest(context: str, request: Request):
 async def cleanup_session(session_id: str):
     """Cleanup session data after request completion"""
     try:
-        if session_id in rag_instance.memory_pools:
-            del rag_instance.memory_pools[session_id]
-        # Clear the LRU cache for this session
-        rag_instance._process_request.cache_clear()
+        # Only clean up if the session has been inactive for more than the TTL
+        current_time = time.time()
+        if (session_id in rag_instance.last_access and 
+            current_time - rag_instance.last_access[session_id] > rag_instance.memory_ttl):
+            
+            if session_id in rag_instance.memory_pools:
+                del rag_instance.memory_pools[session_id]
+            if session_id in rag_instance.last_access:
+                del rag_instance.last_access[session_id]
     except Exception as e:
         logger.error(f"Error cleaning up session {session_id}: {e}")

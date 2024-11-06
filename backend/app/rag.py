@@ -22,6 +22,8 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 import multiprocessing
 from fastapi import HTTPException
+import time
+from datetime import datetime
 
 # At the top of your file, after imports
 os.environ['TIKTOKEN_CACHE_DIR'] = '/app/tiktoken'
@@ -38,12 +40,15 @@ class RAG:
             self.vectordb = self._load_vectordb()
             self.llm = ChatOpenAI(temperature=0, model_name='gpt-4o')
             self.prompt_template = self._create_prompt_template()
-            self.memory = ConversationBufferMemory(
-                memory_key="chat_history",
-                return_messages=True,
-                output_key="answer"
-            )
-
+            
+            # Remove the global memory since we're using per-session memory
+            # self.memory = ConversationBufferMemory(...)
+            
+            # Initialize memory pools with a default TTL (e.g., 30 minutes)
+            self.memory_pools = {}
+            self.memory_ttl = 1800  # 30 minutes in seconds
+            self.last_access = {}
+            
             # CPU-bound task executor (70% of cores for CPU tasks)
             self.cpu_executor = ThreadPoolExecutor(
                 max_workers=int(multiprocessing.cpu_count() * 0.7)
@@ -68,9 +73,6 @@ class RAG:
             
             # Response cache (50MB max size)
             self.response_cache = lru_cache(maxsize=100)(self._process_request)
-            
-            # Separate memory pools for different sessions
-            self.memory_pools = {}
         except Exception as e:
             logger.error(f"Error initializing RAG: {str(e)}", exc_info=True)
             raise
@@ -178,7 +180,7 @@ class RAG:
             """
         return PromptTemplate(template=template, input_variables=["context", "chat_history", "question"])
 
-    @lru_cache(maxsize=1000)
+
     async def _process_request(self, question: str, session_id: str):
         try:
             # Get or create session-specific memory
@@ -189,43 +191,28 @@ class RAG:
                     output_key="answer"
                 )
             
+            # Update last access time
+            self.last_access[session_id] = time.time()
+            
             memory = self.memory_pools[session_id]
             
-            # Rest of your existing _process_request code, but use memory instead of self.memory
-            table_keywords = ['table', 'compare', 'comparison', 'list', 'price', 'cost', 'per']
-            is_table_request = any(keyword in question.lower() for keyword in table_keywords)
-
-            search_kwargs = {
-                "k": 10 if is_table_request else 4,
-                "fetch_k": 20 if is_table_request else 8,
-            }
-
-            retriever = self.vectordb.as_retriever(
-                search_type="mmr",
-                search_kwargs=search_kwargs
-            )
-
+            # Create the chain with the session-specific memory
             qa_chain = ConversationalRetrievalChain.from_llm(
                 llm=self.llm,
-                retriever=retriever,
-                memory=memory,  # Use session-specific memory
+                retriever=self.vectordb.as_retriever(
+                    search_type="mmr",
+                    search_kwargs={"k": 4, "fetch_k": 8}
+                ),
+                memory=memory,
                 combine_docs_chain_kwargs={"prompt": self.prompt_template},
                 return_source_documents=True,
                 return_generated_question=True,
                 output_key="answer"
             )
 
-            if is_table_request:
-                enhanced_question = f"""
-                Create a markdown table for this request. Include ALL available data points.
-                If you find numerical data in the context, you MUST include it.
-                Original question: {question}
-                """
-                result = await qa_chain.ainvoke({"question": enhanced_question})
-            else:
-                result = await qa_chain.ainvoke({"question": question})
-
+            result = await qa_chain.ainvoke({"question": question})
             return result['answer']
+            
         except Exception as e:
             logger.error(f"Error in _process_request method: {str(e)}", exc_info=True)
             raise
@@ -311,6 +298,21 @@ class RAG:
         self.vectordb.merge_from(new_db)
         self.vectordb.save_local(Config.FAISS_INDEX_PATH)
         print(f"Added {len(texts)} new documents to the FAISS index")
+
+    async def cleanup_old_sessions(self):
+        """Clean up old session memories"""
+        current_time = time.time()
+        sessions_to_remove = []
+        
+        for session_id, last_access in self.last_access.items():
+            if current_time - last_access > self.memory_ttl:
+                sessions_to_remove.append(session_id)
+        
+        for session_id in sessions_to_remove:
+            if session_id in self.memory_pools:
+                del self.memory_pools[session_id]
+            if session_id in self.last_access:
+                del self.last_access[session_id]
 
 # Create an instance of the RAG class
 rag_instance = RAG()
