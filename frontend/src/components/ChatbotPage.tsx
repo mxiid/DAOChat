@@ -56,16 +56,16 @@ const useTheme = () => {
 const useChatbot = () => {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
-  const [isThinking, setIsThinking] = useState(false)
+  const [botState, setBotState] = useState<'idle' | 'thinking' | 'streaming'>('idle')
   const [streamingMessage, setStreamingMessage] = useState('')
 
   const handleSendMessage = useCallback(async (message: string) => {
-    if (message.trim() === '' || isThinking) return;
+    if (message.trim() === '' || botState !== 'idle') return;
 
     const newUserMessage: Message = { role: 'user', content: message.trim() };
     setMessages(prev => [...prev, newUserMessage]);
     setInput('');
-    setIsThinking(true);
+    setBotState('thinking');
     setStreamingMessage('');
 
     try {
@@ -84,6 +84,8 @@ const useChatbot = () => {
 
       const decoder = new TextDecoder();
       let accumulatedMessage = '';
+
+      setBotState('streaming');
 
       while (true) {
         const { done, value } = await reader.read();
@@ -105,7 +107,6 @@ const useChatbot = () => {
         }
       }
 
-      // Add the complete message to the chat
       const botMessage: Message = { role: 'bot', content: accumulatedMessage };
       setMessages(prev => [...prev, botMessage]);
       
@@ -118,12 +119,12 @@ const useChatbot = () => {
       };
       setMessages(prev => [...prev, errorBotMessage]);
     } finally {
-      setIsThinking(false);
+      setBotState('idle');
       setStreamingMessage('');
     }
-  }, [isThinking]);
+  }, [botState]);
 
-  return { messages, input, setInput, isThinking, streamingMessage, handleSendMessage }
+  return { messages, input, setInput, botState, streamingMessage, handleSendMessage }
 }
 
 const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message; isDarkMode: boolean }) => (
@@ -169,21 +170,27 @@ const GeometricShapes = () => (
   </div>
 )
 
-const ThinkingIndicator = () => (
+const ThinkingIndicator = ({ state }: { state: 'thinking' | 'streaming' }) => (
   <div className="flex items-center space-x-2 text-gray-400 mb-2">
     <BotIcon className="w-5 h-5 text-[#00FFFF]" />
-    <span className="text-sm">Thinking</span>
-    <span className="flex space-x-1">
-      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-    </span>
+    {state === 'thinking' ? (
+      <>
+        <span className="text-sm">Thinking</span>
+        <span className="flex space-x-1">
+          <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+          <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+          <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+        </span>
+      </>
+    ) : (
+      <span className="w-2 h-4 bg-gray-400 animate-pulse"></span>
+    )}
   </div>
 )
 
 export default function ChatbotPage() {
   const { isDarkMode, toggleTheme } = useTheme()
-  const { messages, input, setInput, isThinking, streamingMessage, handleSendMessage } = useChatbot()
+  const { messages, input, setInput, botState, streamingMessage, handleSendMessage } = useChatbot()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
 
@@ -192,14 +199,14 @@ export default function ChatbotPage() {
       const scrollArea = scrollAreaRef.current
       scrollArea.scrollTop = scrollArea.scrollHeight
     }
-  }, [messages, streamingMessage, isThinking])
+  }, [messages, streamingMessage, botState])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value)
   }
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !isThinking && input.trim()) {
+    if (e.key === 'Enter' && botState !== 'thinking' && input.trim()) {
       handleSendMessage(input)
     }
   }
@@ -245,23 +252,25 @@ export default function ChatbotPage() {
             </div>
           </div>
         ) : (
-          <div className="flex-1 relative">
-            <ScrollArea className="flex-1" ref={scrollAreaRef}>
-              <div className="px-4 py-2 max-w-3xl mx-auto">
-                {messages.map((message, index) => (
-                  <MessageComponent key={index} message={message} isDarkMode={isDarkMode} />
-                ))}
-                {isThinking && <ThinkingIndicator />}
-                {streamingMessage && (
-                  <MessageComponent
-                    message={{ role: 'bot', content: streamingMessage }}
-                    isDarkMode={isDarkMode}
-                  />
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            </ScrollArea>
-          </div>
+          <ScrollArea className="flex-1" ref={scrollAreaRef}>
+            <div className="px-4 py-2 max-w-3xl mx-auto">
+              {messages.map((message, index) => (
+                <MessageComponent key={index} message={message} isDarkMode={isDarkMode} />
+              ))}
+              {botState !== 'idle' && (
+                <>
+                  <ThinkingIndicator state={botState} />
+                  {botState === 'streaming' && (
+                    <MessageComponent
+                      message={{ role: 'bot', content: streamingMessage }}
+                      isDarkMode={isDarkMode}
+                    />
+                  )}
+                </>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </ScrollArea>
         )}
 
         <div className="sticky bottom-0 z-50">
@@ -277,16 +286,16 @@ export default function ChatbotPage() {
                 className={`flex-grow rounded-l-full border-0 focus:ring-0 ${
                   isDarkMode ? 'bg-gray-800 text-white placeholder-gray-400' : 'bg-white text-gray-800 placeholder-gray-500'
                 }`}
-                disabled={isThinking}
+                disabled={botState !== 'idle'}
               />
               <Button
                 onClick={() => handleSendMessage(input)}
                 className={`rounded-r-full ${
-                  isThinking ? 'bg-gray-500' : 'bg-[#ADFF2F] hover:bg-[#9ACD32]'
+                  botState !== 'idle' ? 'bg-gray-500' : 'bg-[#ADFF2F] hover:bg-[#9ACD32]'
                 } text-black`}
-                disabled={isThinking || !input.trim()}
+                disabled={botState !== 'idle' || !input.trim()}
               >
-                {isThinking ? <Loader2Icon className="w-4 h-4 animate-spin" /> : <SendIcon className="w-4 h-4" />}
+                {botState !== 'idle' ? <Loader2Icon className="w-4 h-4 animate-spin" /> : <SendIcon className="w-4 h-4" />}
               </Button>
             </div>
           </div>
