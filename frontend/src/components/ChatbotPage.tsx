@@ -128,7 +128,7 @@ const useChatbot = () => {
 
 const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message; isDarkMode: boolean }) => (
   <div className={`flex items-start mb-4 ${message.role === "user" ? "justify-end" : ""}`}>
-    {message.role === "bot" && <BotIcon className="w-5 h-5 sm:w-6 sm:h-6 mr-2 text-[#00FFFF] flex-shrink-0" />}
+    {message.role === "bot" && <BotIcon className="w-5 h-5 sm:w-6 sm:h-6 mr-2 text-[#00FFFF] flex-shrink-0 mt-1" />}
     <div
       className={`rounded-lg p-2 sm:p-3 max-w-[80%] ${
         message.role === "user" ? "bg-[#ADFF2F] text-black" : isDarkMode ? "bg-gray-700" : "bg-gray-200"
@@ -155,9 +155,8 @@ const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message
           </ReactMarkdown>
         </Suspense>
       )}
-      {isStreaming && message.role === "bot" && <ThinkingIndicator />}
     </div>
-    {message.role === "user" && <UserIcon className="w-5 h-5 sm:w-6 sm:h-6 ml-2 text-[#ADFF2F] flex-shrink-0" />}
+    {message.role === "user" && <UserIcon className="w-5 h-5 sm:w-6 sm:h-6 ml-2 text-[#ADFF2F] flex-shrink-0 mt-1" />}
   </div>
 ))
 
