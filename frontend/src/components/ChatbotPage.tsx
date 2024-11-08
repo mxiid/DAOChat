@@ -113,7 +113,11 @@ const useChatbot = () => {
   return { messages, input, setInput, isThinking, streamingMessage, handleSendMessage }
 }
 
-const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message; isDarkMode: boolean }) => (
+const MessageComponent = React.memo(({ message, isDarkMode, isStreaming }: { 
+  message: Message; 
+  isDarkMode: boolean; 
+  isStreaming: boolean 
+}) => (
   <div className={`flex items-start mb-4 ${message.role === "user" ? "justify-end" : ""}`}>
     {message.role === "bot" && <BotIcon className="w-5 h-5 sm:w-6 sm:h-6 mr-2 text-[#00FFFF] flex-shrink-0" />}
     <div
@@ -128,105 +132,12 @@ const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             className={`prose prose-sm max-w-none break-words ${isDarkMode ? "prose-invert" : ""}`}
-            components={{
-              a: ({ node, ...props }) => (
-                <a {...props} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer" />
-              ),
-              p: ({ node, ...props }) => (
-                <p {...props} className={`mb-2 text-sm sm:text-base ${isDarkMode ? "text-white" : "text-black"}`} />
-              ),
-              ul: ({ node, ...props }) => (
-                <ul {...props} className="list-disc ml-4 space-y-2 mb-2" />
-              ),
-              ol: ({ node, ...props }) => (
-                <ol {...props} className="list-decimal ml-4 space-y-2 mb-2" />
-              ),
-              li: ({ node, ...props }) => (
-                <li {...props} className={`${isDarkMode ? "text-white" : "text-black"}`} />
-              ),
-              strong: ({ node, ...props }) => (
-                <strong {...props} className={`font-bold ${isDarkMode ? "text-white" : "text-black"}`} />
-              ),
-              h1: ({ node, ...props }) => (
-                <h1 {...props} className={`text-xl font-bold mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
-              ),
-              h2: ({ node, ...props }) => (
-                <h2 {...props} className={`text-lg font-bold mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
-              ),
-              h3: ({ node, ...props }) => (
-                <h3 {...props} className={`text-base font-bold mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
-              ),
-              table: ({ node, ...props }) => (
-                <div className="overflow-x-auto my-4">
-                  <table
-                    {...props}
-                    className={`w-full border-collapse text-sm ${
-                      isDarkMode ? "text-white" : "text-black"
-                    }`}
-                  />
-                </div>
-              ),
-              thead: ({ node, ...props }) => (
-                <thead
-                  {...props}
-                  className={`${
-                    isDarkMode ? "bg-gray-800 text-white" : "bg-gray-100 text-black"
-                  }`}
-                />
-              ),
-              tbody: ({ node, ...props }) => (
-                <tbody
-                  {...props}
-                  className={`${
-                    isDarkMode ? "text-white" : "text-black"
-                  }`}
-                />
-              ),
-              tr: ({ node, ...props }) => (
-                <tr
-                  {...props}
-                  className={`border-b ${
-                    isDarkMode
-                      ? "border-gray-600 hover:bg-gray-800/50"
-                      : "border-gray-200 hover:bg-gray-50"
-                  }`}
-                />
-              ),
-              th: ({ node, ...props }) => (
-                <th
-                  {...props}
-                  className="px-4 py-2 text-left font-medium border-r last:border-r-0"
-                />
-              ),
-              td: ({ node, ...props }) => (
-                <td
-                  {...props}
-                  className="px-4 py-2 border-r last:border-r-0"
-                />
-              ),
-              code: ({ node, className, children, ...props }) => {
-                const match = /language-(\w+)/.exec(className || "")
-                return match ? (
-                  <pre className={`bg-gray-100 rounded p-2 mb-2 overflow-x-auto ${isDarkMode ? "bg-gray-800" : ""}`}>
-                    <code className={`language-${match[1]}`} {...props}>
-                      {children}
-                    </code>
-                  </pre>
-                ) : (
-                  <code
-                    {...props}
-                    className={`bg-gray-100 rounded px-1 py-0.5 ${isDarkMode ? "bg-gray-800 text-white" : "text-black"}`}
-                  >
-                    {children}
-                  </code>
-                )
-              },
-            }}
           >
             {message.content}
           </ReactMarkdown>
         </Suspense>
       )}
+      {isStreaming && message.role === "bot" && <ThinkingIndicator />}
     </div>
     {message.role === "user" && <UserIcon className="w-5 h-5 sm:w-6 sm:h-6 ml-2 text-[#ADFF2F] flex-shrink-0" />}
   </div>
@@ -241,6 +152,17 @@ const GeometricShapes = () => (
   </div>
 )
 
+const ThinkingIndicator = () => (
+  <div className="flex items-center space-x-2 text-gray-400">
+    <span className="text-sm">Thinking</span>
+    <span className="flex space-x-1">
+      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+    </span>
+  </div>
+)
+
 export default function ChatbotPage() {
   const { isDarkMode, toggleTheme } = useTheme()
   const { messages, input, setInput, isThinking, streamingMessage, handleSendMessage } = useChatbot()
@@ -248,7 +170,7 @@ export default function ChatbotPage() {
 
   React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+  }, [messages, streamingMessage])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value)
@@ -306,26 +228,19 @@ export default function ChatbotPage() {
               <div className="px-4 py-2">
                 <div className="max-w-3xl mx-auto">
                   {messages.map((message, index) => (
-                    <MessageComponent key={index} message={message} isDarkMode={isDarkMode} />
+                    <MessageComponent 
+                      key={index} 
+                      message={message} 
+                      isDarkMode={isDarkMode} 
+                      isStreaming={index === messages.length - 1 && message.role === 'bot' && !!streamingMessage}
+                    />
                   ))}
-                  {(isThinking || streamingMessage) && (
-                    <div className="flex items-center mb-4">
-                      <BotIcon className="w-6 h-6 mr-2 text-[#00FFFF]" />
-                      <div className={`${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'} rounded-lg p-3`}>
-                        {streamingMessage ? (
-                          <Suspense fallback={<div>Loading...</div>}>
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              className={`prose prose-sm max-w-none break-words ${isDarkMode ? "prose-invert" : ""}`}
-                            >
-                              {streamingMessage}
-                            </ReactMarkdown>
-                          </Suspense>
-                        ) : (
-                          <Loader2Icon className="w-4 h-4 animate-spin text-[#00FFFF]" />
-                        )}
-                      </div>
-                    </div>
+                  {streamingMessage && (
+                    <MessageComponent
+                      message={{ role: 'bot', content: streamingMessage }}
+                      isDarkMode={isDarkMode}
+                      isStreaming={true}
+                    />
                   )}
                   <div ref={messagesEndRef} />
                 </div>
