@@ -254,29 +254,45 @@ class RAG:
             logger.error(f"Error in generate_questions method: {str(e)}", exc_info=True)
             raise
 
-    async def stream_query(self, question: str):
-        callback = AsyncIteratorCallbackHandler()
-        streaming_llm = ChatOpenAI(
-            streaming=True,
-            callbacks=[callback],
-            temperature=0,
-            model_name='gpt-4o'
-        )
-
-        qa_chain = ConversationalRetrievalChain.from_llm(
-            llm=streaming_llm,
-            retriever=self.vectordb.as_retriever(search_kwargs={"k": 4}),
-            memory=self.memory,
-            combine_docs_chain_kwargs={"prompt": self.prompt_template},
-            return_source_documents=True,
-            return_generated_question=True,
-        )
-
+    async def stream_query(self, question: str, session_id: str):
         try:
+            callback = AsyncIteratorCallbackHandler()
+            streaming_llm = ChatOpenAI(
+                streaming=True,
+                callbacks=[callback],
+                temperature=0,
+                model_name='gpt-4o'
+            )
+            
+            # Get or create session-specific memory
+            if session_id not in self.memory_pools:
+                self.memory_pools[session_id] = ConversationBufferMemory(
+                    memory_key="chat_history",
+                    return_messages=True,
+                    output_key="answer"
+                )
+            
+            memory = self.memory_pools[session_id]
+            
+            qa_chain = ConversationalRetrievalChain.from_llm(
+                llm=streaming_llm,
+                retriever=self.vectordb.as_retriever(
+                    search_type="mmr",
+                    search_kwargs={"k": 4, "fetch_k": 8}
+                ),
+                memory=memory,
+                combine_docs_chain_kwargs={"prompt": self.prompt_template},
+                return_source_documents=True,
+                return_generated_question=True,
+            )
+
             task = asyncio.create_task(qa_chain.ainvoke({"question": question}))
+            
             async for token in callback.aiter():
                 yield token
+
             await task  # Ensure the task completes
+            
         except Exception as e:
             logger.error(f"Error in stream_query: {str(e)}", exc_info=True)
             yield "An error occurred while processing your request."

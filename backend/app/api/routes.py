@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Request, BackgroundTasks, Depends
+from fastapi import APIRouter, HTTPException, Request, BackgroundTasks, Depends, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List
 import logging
@@ -6,6 +7,7 @@ from ..rag import ask_question, suggest_questions, rag_instance
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 import time
+import json
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -21,7 +23,7 @@ class Question(BaseModel):
 class Answer(BaseModel):
     text: str
 
-@router.post("/ask", response_model=Answer)
+@router.post("/ask")
 async def ask(
     question: Question, 
     request: Request, 
@@ -32,12 +34,18 @@ async def ask(
         logger.info(f"Received question: {question.text}")
         
         session_id = request.headers.get("X-Session-ID", "default")
-        answer = await ask_question(question.text, session_id)
+        
+        async def generate():
+            async for token in rag_instance.stream_query(question.text, session_id):
+                yield f"data: {json.dumps({'token': token})}\n\n"
         
         # Cleanup in background
         background_tasks.add_task(cleanup_session, session_id)
         
-        return Answer(text=answer)
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream"
+        )
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -49,6 +57,31 @@ async def suggest(context: str, request: Request):
         return questions
     except Exception as e:
         logger.error(f"Error suggesting questions: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/ask/stream")
+async def ask_stream(
+    question: Question,
+    request: Request,
+    background_tasks: BackgroundTasks
+):
+    try:
+        session_id = request.headers.get("X-Session-ID", "default")
+        
+        async def generate():
+            async for token in rag_instance.stream_query(question.text, session_id):
+                yield f"data: {json.dumps({'token': token})}\n\n"
+        
+        # Cleanup in background
+        background_tasks.add_task(cleanup_session, session_id)
+        
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error processing streaming request: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 async def cleanup_session(session_id: str):

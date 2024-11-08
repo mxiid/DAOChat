@@ -44,6 +44,7 @@ const useChatbot = () => {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isThinking, setIsThinking] = useState(false)
+  const [streamingMessage, setStreamingMessage] = useState('')
 
   const handleSendMessage = useCallback(async (message: string) => {
     if (message.trim() === '' || isThinking) return;
@@ -52,33 +53,64 @@ const useChatbot = () => {
     setMessages(prev => [...prev, newUserMessage]);
     setInput('');
     setIsThinking(true);
+    setStreamingMessage('');
 
     try {
-      const response = await axios.post('/api/ask', { text: message });
+      const response = await fetch('/api/ask/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: message }),
+      });
 
-      console.log('API Response:', response); // For debugging
+      if (!response.ok) throw new Error('Stream response was not ok');
+      
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No reader available');
 
-      if (response.data && typeof response.data === 'object' && response.data.text) {
-        const botMessage: Message = { role: 'bot', content: response.data.text };
-        setMessages(prev => [...prev, botMessage]);
-      } else {
-        console.error('Unexpected response format:', response.data);
-        throw new Error('Unexpected response format');
+      const decoder = new TextDecoder();
+      let accumulatedMessage = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              accumulatedMessage += data.token;
+              setStreamingMessage(accumulatedMessage);
+            } catch (e) {
+              console.error('Error parsing SSE data:', e);
+            }
+          }
+        }
       }
+
+      // Add the complete message to the chat
+      const botMessage: Message = { role: 'bot', content: accumulatedMessage };
+      setMessages(prev => [...prev, botMessage]);
+      
     } catch (error) {
       console.error('Error sending message:', error);
-      let errorMessage = 'Sorry, I encountered an error. Please try again.';
-      if (error instanceof Error) {
-        errorMessage += ` Error details: ${error.message}`;
-      }
-      const errorBotMessage: Message = { role: 'bot', content: errorMessage };
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+      const errorBotMessage: Message = { 
+        role: 'bot', 
+        content: `Sorry, I encountered an error: ${errorMessage}` 
+      };
       setMessages(prev => [...prev, errorBotMessage]);
     } finally {
       setIsThinking(false);
+      setStreamingMessage('');
     }
   }, [isThinking]);
 
-  return { messages, input, setInput, isThinking, handleSendMessage }
+  return { messages, input, setInput, isThinking, streamingMessage, handleSendMessage }
 }
 
 const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message; isDarkMode: boolean }) => (
@@ -211,7 +243,7 @@ const GeometricShapes = () => (
 
 export default function ChatbotPage() {
   const { isDarkMode, toggleTheme } = useTheme()
-  const { messages, input, setInput, isThinking, handleSendMessage } = useChatbot()
+  const { messages, input, setInput, isThinking, streamingMessage, handleSendMessage } = useChatbot()
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
@@ -276,11 +308,22 @@ export default function ChatbotPage() {
                   {messages.map((message, index) => (
                     <MessageComponent key={index} message={message} isDarkMode={isDarkMode} />
                   ))}
-                  {isThinking && (
+                  {(isThinking || streamingMessage) && (
                     <div className="flex items-center mb-4">
                       <BotIcon className="w-6 h-6 mr-2 text-[#00FFFF]" />
                       <div className={`${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'} rounded-lg p-3`}>
-                        <Loader2Icon className="w-4 h-4 animate-spin text-[#00FFFF]" />
+                        {streamingMessage ? (
+                          <Suspense fallback={<div>Loading...</div>}>
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              className={`prose prose-sm max-w-none break-words ${isDarkMode ? "prose-invert" : ""}`}
+                            >
+                              {streamingMessage}
+                            </ReactMarkdown>
+                          </Suspense>
+                        ) : (
+                          <Loader2Icon className="w-4 h-4 animate-spin text-[#00FFFF]" />
+                        )}
                       </div>
                     </div>
                   )}
