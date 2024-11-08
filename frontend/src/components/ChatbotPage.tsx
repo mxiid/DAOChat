@@ -28,13 +28,26 @@ const useTheme = () => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('theme') === 'dark'
     }
-    return true
+    return false
   })
 
   const toggleTheme = useCallback(() => {
     const newTheme = !isDarkMode
     setIsDarkMode(newTheme)
     localStorage.setItem('theme', newTheme ? 'dark' : 'light')
+    if (newTheme) {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+  }, [isDarkMode])
+
+  React.useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
   }, [isDarkMode])
 
   return { isDarkMode, toggleTheme }
@@ -113,11 +126,7 @@ const useChatbot = () => {
   return { messages, input, setInput, isThinking, streamingMessage, handleSendMessage }
 }
 
-const MessageComponent = React.memo(({ message, isDarkMode, isStreaming }: { 
-  message: Message; 
-  isDarkMode: boolean; 
-  isStreaming: boolean 
-}) => (
+const MessageComponent = React.memo(({ message, isDarkMode }: { message: Message; isDarkMode: boolean }) => (
   <div className={`flex items-start mb-4 ${message.role === "user" ? "justify-end" : ""}`}>
     {message.role === "bot" && <BotIcon className="w-5 h-5 sm:w-6 sm:h-6 mr-2 text-[#00FFFF] flex-shrink-0" />}
     <div
@@ -132,6 +141,15 @@ const MessageComponent = React.memo(({ message, isDarkMode, isStreaming }: {
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             className={`prose prose-sm max-w-none break-words ${isDarkMode ? "prose-invert" : ""}`}
+            components={{
+              a: ({ node, ...props }) => (
+                <a {...props} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer" />
+              ),
+              p: ({ node, ...props }) => (
+                <p {...props} className={`mb-2 text-sm sm:text-base ${isDarkMode ? "text-white" : "text-black"}`} />
+              ),
+              // ... rest of the markdown components ...
+            }}
           >
             {message.content}
           </ReactMarkdown>
@@ -153,7 +171,8 @@ const GeometricShapes = () => (
 )
 
 const ThinkingIndicator = () => (
-  <div className="flex items-center space-x-2 text-gray-400">
+  <div className="flex items-center space-x-2 text-gray-400 mb-2">
+    <BotIcon className="w-5 h-5 text-[#00FFFF]" />
     <span className="text-sm">Thinking</span>
     <span className="flex space-x-1">
       <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
@@ -167,10 +186,14 @@ export default function ChatbotPage() {
   const { isDarkMode, toggleTheme } = useTheme()
   const { messages, input, setInput, isThinking, streamingMessage, handleSendMessage } = useChatbot()
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, streamingMessage])
+    if (scrollAreaRef.current) {
+      const scrollArea = scrollAreaRef.current
+      scrollArea.scrollTop = scrollArea.scrollHeight
+    }
+  }, [messages, streamingMessage, isThinking])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value)
@@ -224,28 +247,20 @@ export default function ChatbotPage() {
           </div>
         ) : (
           <div className="flex-1 relative">
-            <ScrollArea className="h-full absolute inset-0">
-              <div className="px-4 py-2">
-                <div className="max-w-3xl mx-auto">
-                  {messages.map((message, index) => (
-                    <MessageComponent 
-                      key={index} 
-                      message={message} 
-                      isDarkMode={isDarkMode} 
-                      isStreaming={index === messages.length - 1 && message.role === 'bot' && !!streamingMessage}
-                    />
-                  ))}
-                  {streamingMessage && (
-                    <MessageComponent
-                      message={{ role: 'bot', content: streamingMessage }}
-                      isDarkMode={isDarkMode}
-                      isStreaming={true}
-                    />
-                  )}
-                  <div ref={messagesEndRef} />
-                </div>
+            <ScrollArea className="flex-1" ref={scrollAreaRef}>
+              <div className="px-4 py-2 max-w-3xl mx-auto">
+                {messages.map((message, index) => (
+                  <MessageComponent key={index} message={message} isDarkMode={isDarkMode} />
+                ))}
+                {isThinking && <ThinkingIndicator />}
+                {streamingMessage && (
+                  <MessageComponent
+                    message={{ role: 'bot', content: streamingMessage }}
+                    isDarkMode={isDarkMode}
+                  />
+                )}
+                <div ref={messagesEndRef} />
               </div>
-              <ScrollBar orientation="vertical" />
             </ScrollArea>
           </div>
         )}
