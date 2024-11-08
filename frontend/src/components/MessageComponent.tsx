@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from 'react'
-import { useState, useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import { BotIcon, UserIcon } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -16,18 +16,7 @@ const MessageComponent: React.FC<{
   isDarkMode: boolean;
   isStreaming: boolean;
 }> = React.memo(({ message, isDarkMode, isStreaming }) => {
-  const [showCursor, setShowCursor] = useState(isStreaming);
   const contentRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setShowCursor(isStreaming);
-  }, [isStreaming]);
-
-  useEffect(() => {
-    if (contentRef.current) {
-      contentRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    }
-  }, [message.content]);
 
   const renderContent = () => {
     if (message.role === 'user') {
@@ -43,19 +32,51 @@ const MessageComponent: React.FC<{
             p: ({ node, ...props }) => (
               <p {...props} className={`mb-2 text-sm sm:text-base ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
-            // ... rest of the markdown components ...
+            a: ({ node, ...props }) => (
+              <a {...props} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer" />
+            ),
+            ul: ({ node, ...props }) => (
+              <ul {...props} className="list-disc ml-4 space-y-2 mb-2" />
+            ),
+            ol: ({ node, ...props }) => (
+              <ol {...props} className="list-decimal ml-4 space-y-2 mb-2" />
+            ),
+            li: ({ node, ...props }) => (
+              <li {...props} className={`${isDarkMode ? "text-white" : "text-black"}`} />
+            ),
+            strong: ({ node, ...props }) => (
+              <strong {...props} className={`font-bold ${isDarkMode ? "text-white" : "text-black"}`} />
+            ),
+            h1: ({ node, ...props }) => (
+              <h1 {...props} className={`text-xl font-bold mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
+            ),
+            h2: ({ node, ...props }) => (
+              <h2 {...props} className={`text-lg font-bold mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
+            ),
+            h3: ({ node, ...props }) => (
+              <h3 {...props} className={`text-base font-bold mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
+            ),
+            code: ({ node, className, children, ...props }) => {
+              const match = /language-(\w+)/.exec(className || "")
+              return match ? (
+                <pre className={`bg-gray-100 rounded p-2 mb-2 overflow-x-auto ${isDarkMode ? "bg-gray-800" : ""}`}>
+                  <code className={`language-${match[1]}`} {...props}>
+                    {children}
+                  </code>
+                </pre>
+              ) : (
+                <code
+                  {...props}
+                  className={`bg-gray-100 rounded px-1 py-0.5 ${isDarkMode ? "bg-gray-800 text-white" : "text-black"}`}
+                >
+                  {children}
+                </code>
+              )
+            },
           }}
         >
           {message.content}
         </ReactMarkdown>
-        {showCursor && (
-          <span
-            className={`inline-block w-2 h-4 align-middle ${
-              isDarkMode ? "bg-white" : "bg-black"
-            } animate-pulse`}
-            aria-hidden="true"
-          />
-        )}
       </div>
     );
   };
