@@ -229,17 +229,13 @@ export default function ChatbotPage() {
                   isStreaming={false}
                 />
               ))}
-              {botState !== 'idle' && (
-                <>
-                  <ThinkingIndicator state={botState} />
-                  {botState === 'streaming' && (
-                    <MessageComponent
-                      message={{ role: 'bot', content: streamingMessage }}
-                      isDarkMode={isDarkMode}
-                      isStreaming={true}
-                    />
-                  )}
-                </>
+              {botState === 'thinking' && <ThinkingIndicator state={botState} />}
+              {botState === 'streaming' && (
+                <MessageComponent
+                  message={{ role: 'bot', content: streamingMessage }}
+                  isDarkMode={isDarkMode}
+                  isStreaming={true}
+                />
               )}
               <div ref={messagesEndRef} />
             </div>
