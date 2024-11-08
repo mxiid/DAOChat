@@ -56,7 +56,7 @@ const useChatbot = () => {
     setStreamingMessage('');
 
     try {
-      const response = await fetch('/api/ask/stream', {
+      const response = await fetch('/api/ask', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

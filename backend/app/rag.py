@@ -264,6 +264,13 @@ class RAG:
                 model_name='gpt-4o'
             )
             
+            # Get relevant documents first
+            docs = self.vectordb.similarity_search(
+                question,
+                k=4,
+            )
+            context = "\n\n".join(doc.page_content for doc in docs)
+            
             # Get or create session-specific memory
             if session_id not in self.memory_pools:
                 self.memory_pools[session_id] = ConversationBufferMemory(
@@ -273,26 +280,28 @@ class RAG:
                 )
             
             memory = self.memory_pools[session_id]
+            chat_history = memory.chat_memory.messages if hasattr(memory, 'chat_memory') else []
             
-            qa_chain = ConversationalRetrievalChain.from_llm(
-                llm=streaming_llm,
-                retriever=self.vectordb.as_retriever(
-                    search_type="mmr",
-                    search_kwargs={"k": 4, "fetch_k": 8}
-                ),
-                memory=memory,
-                combine_docs_chain_kwargs={"prompt": self.prompt_template},
-                return_source_documents=True,
-                return_generated_question=True,
+            # Format the prompt with context
+            formatted_prompt = self.prompt_template.format(
+                context=context,
+                chat_history=chat_history,
+                question=question
             )
 
-            task = asyncio.create_task(qa_chain.ainvoke({"question": question}))
+            # Create messages for the chat
+            messages = [HumanMessage(content=formatted_prompt)]
             
-            async for token in callback.aiter():
-                yield token
-
-            await task  # Ensure the task completes
+            # Stream the response
+            async for chunk in streaming_llm.astream(messages):
+                if hasattr(chunk, 'content'):
+                    yield chunk.content
             
+            # Update memory after completion
+            if hasattr(memory, 'chat_memory'):
+                memory.chat_memory.add_user_message(question)
+                memory.chat_memory.add_ai_message(formatted_prompt)
+                
         except Exception as e:
             logger.error(f"Error in stream_query: {str(e)}", exc_info=True)
             yield "An error occurred while processing your request."
