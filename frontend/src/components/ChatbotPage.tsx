@@ -1,16 +1,13 @@
 "use client"
 
 import * as React from 'react'
-import { useState, useCallback, useRef, lazy, Suspense } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
-import { ScrollArea, ScrollBar } from "./ui/scroll-area"
-import { SendIcon, BotIcon, UserIcon, Loader2Icon, SunIcon, MoonIcon } from 'lucide-react'
-import axios from 'axios'
-import remarkGfm from 'remark-gfm'  // Add this import
+import { ScrollArea } from "./ui/scroll-area"
+import { SendIcon, BotIcon, Loader2Icon, SunIcon, MoonIcon } from 'lucide-react'
 import MessageComponent from './MessageComponent'
 
-const ReactMarkdown = lazy(() => import('react-markdown'))
 
 interface Message {
   role: 'user' | 'bot';
@@ -200,7 +197,16 @@ export default function ChatbotPage() {
         
         {messages.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center px-4 py-8">
-            <h2 className={`text-2xl font-semibold text-center mb-8 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
+            <img 
+              src="/emblem.svg" 
+              alt="DAO PropTech Emblem" 
+              className={`w-24 h-24 mb-8 ${
+                isDarkMode ? 'invert' : ''
+              }`}
+            />
+            <h2 className={`text-2xl font-semibold text-center mb-8 ${
+              isDarkMode ? 'text-white' : 'text-gray-800'
+            }`}>
               How can I assist you with real estate investments today?
             </h2>
             <div className="w-full max-w-md space-y-4">
