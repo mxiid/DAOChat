@@ -134,7 +134,7 @@ const GeometricShapes = () => (
   </div>
 )
 
-const ThinkingIndicator = ({ state }: { state: 'thinking' | 'streaming' }) => (
+const ThinkingIndicator = ({ state, isDarkMode }: { state: 'thinking' | 'streaming', isDarkMode: boolean }) => (
   <div className="flex items-center space-x-2 text-gray-400 mb-2">
     <img 
       src="/emblem.svg" 
@@ -243,7 +243,7 @@ export default function ChatbotPage() {
                   isStreaming={false}
                 />
               ))}
-              {botState === 'thinking' && <ThinkingIndicator state={botState} />}
+              {botState === 'thinking' && <ThinkingIndicator state={botState} isDarkMode={isDarkMode} />}
               {botState === 'streaming' && (
                 <MessageComponent
                   message={{ role: 'bot', content: streamingMessage }}
