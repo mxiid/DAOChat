@@ -136,16 +136,18 @@ const GeometricShapes = () => (
 )
 
 const ThinkingIndicator = ({ state, isDarkMode }: { state: 'thinking' | 'streaming', isDarkMode: boolean }) => (
-  <div className="flex items-center space-x-2 text-gray-400 mb-2">
-    <div className="w-6 h-6">
+  <div className="flex items-center space-x-2 mb-4">
+    <div className="w-6 h-6 mr-2">
       <AnimatedLogo thinking={true} />
     </div>
-    <span className="text-sm">Thinking</span>
-    <span className="flex space-x-1">
-      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-    </span>
+    <div className="flex items-center space-x-2 text-gray-400">
+      <span className="text-sm">Thinking</span>
+      <span className="flex space-x-1">
+        <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+        <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+        <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+      </span>
+    </div>
   </div>
 )
 

@@ -3,9 +3,9 @@
 import * as React from "react"
 import { motion } from "framer-motion"
 
-export default function Component({ thinking = false }: { thinking?: boolean }) {
+export default function AnimatedLogo({ thinking = false }: { thinking?: boolean }) {
   return (
-    <div className="flex items-center justify-center w-32 h-32 bg-background">
+    <div className="flex items-center justify-center w-full h-full bg-transparent">
       <motion.svg
         viewBox="0 0 121.82 127.44"
         initial="hidden"
