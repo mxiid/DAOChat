@@ -7,6 +7,7 @@ import { Input } from "./ui/input"
 import { ScrollArea } from "./ui/scroll-area"
 import { SendIcon, Loader2Icon, SunIcon, MoonIcon } from 'lucide-react'
 import MessageComponent from './MessageComponent'
+import AnimatedLogo from './AnimatedLogo'
 
 
 interface Message {
@@ -136,23 +137,15 @@ const GeometricShapes = () => (
 
 const ThinkingIndicator = ({ state, isDarkMode }: { state: 'thinking' | 'streaming', isDarkMode: boolean }) => (
   <div className="flex items-center space-x-2 text-gray-400 mb-2">
-    <img 
-      src="/emblem.svg" 
-      alt="DAO PropTech Emblem" 
-      className={`w-5 h-5 ${isDarkMode ? 'invert' : ''}`}
-    />
-    {state === 'thinking' ? (
-      <>
-        <span className="text-sm">Thinking</span>
-        <span className="flex space-x-1">
-          <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-          <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-          <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-        </span>
-      </>
-    ) : (
-      <span className="w-2 h-4 bg-gray-400 animate-pulse"></span>
-    )}
+    <div className="w-6 h-6">
+      <AnimatedLogo thinking={true} />
+    </div>
+    <span className="text-sm">Thinking</span>
+    <span className="flex space-x-1">
+      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+    </span>
   </div>
 )
 

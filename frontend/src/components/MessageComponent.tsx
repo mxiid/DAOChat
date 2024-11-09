@@ -5,6 +5,7 @@ import { useRef } from 'react'
 import { UserIcon } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import AnimatedLogo from './AnimatedLogo'
 
 interface Message {
   role: 'user' | 'bot';
@@ -84,13 +85,17 @@ const MessageComponent: React.FC<{
   return (
     <div className={`flex items-start mb-4 ${message.role === "user" ? "justify-end" : ""}`}>
       {message.role === "bot" && (
-        <img 
-          src="/emblem.svg" 
-          alt="DAO PropTech Emblem" 
-          className={`w-5 h-5 sm:w-6 sm:h-6 mr-2 flex-shrink-0 mt-1 ${
-            isDarkMode ? 'invert' : ''
-          }`}
-        />
+        <div className="w-6 h-6 mr-2 flex-shrink-0 mt-1">
+          {isStreaming ? (
+            <AnimatedLogo thinking={false} />
+          ) : (
+            <img 
+              src="/emblem.svg" 
+              alt="DAO PropTech Emblem" 
+              className={`w-full h-full ${isDarkMode ? 'invert' : ''}`}
+            />
+          )}
+        </div>
       )}
       <div
         className={`rounded-lg p-2 sm:p-3 max-w-[80%] ${
