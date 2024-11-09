@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useRef } from 'react'
-import { BotIcon, UserIcon } from 'lucide-react'
+import { UserIcon } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -83,7 +83,15 @@ const MessageComponent: React.FC<{
 
   return (
     <div className={`flex items-start mb-4 ${message.role === "user" ? "justify-end" : ""}`}>
-      {message.role === "bot" && <BotIcon className="w-5 h-5 sm:w-6 sm:h-6 mr-2 text-[#00FFFF] flex-shrink-0 mt-1" />}
+      {message.role === "bot" && (
+        <img 
+          src="/emblem.svg" 
+          alt="DAO PropTech Emblem" 
+          className={`w-5 h-5 sm:w-6 sm:h-6 mr-2 flex-shrink-0 mt-1 ${
+            isDarkMode ? 'invert' : ''
+          }`}
+        />
+      )}
       <div
         className={`rounded-lg p-2 sm:p-3 max-w-[80%] ${
           message.role === "user" ? "bg-[#ADFF2F] text-black" : isDarkMode ? "bg-gray-700" : "bg-gray-200"

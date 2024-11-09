@@ -5,7 +5,7 @@ import { useState, useCallback, useRef } from 'react'
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { ScrollArea } from "./ui/scroll-area"
-import { SendIcon, BotIcon, Loader2Icon, SunIcon, MoonIcon } from 'lucide-react'
+import { SendIcon, Loader2Icon, SunIcon, MoonIcon } from 'lucide-react'
 import MessageComponent from './MessageComponent'
 
 
@@ -136,7 +136,11 @@ const GeometricShapes = () => (
 
 const ThinkingIndicator = ({ state }: { state: 'thinking' | 'streaming' }) => (
   <div className="flex items-center space-x-2 text-gray-400 mb-2">
-    <BotIcon className="w-5 h-5 text-[#00FFFF]" />
+    <img 
+      src="/emblem.svg" 
+      alt="DAO PropTech Emblem" 
+      className={`w-5 h-5 ${isDarkMode ? 'invert' : ''}`}
+    />
     {state === 'thinking' ? (
       <>
         <span className="text-sm">Thinking</span>
@@ -179,7 +183,11 @@ export default function ChatbotPage() {
     <div className={`flex flex-col min-h-[100dvh] ${isDarkMode ? 'dark bg-gray-900' : 'bg-white'}`}>
       <header className="bg-gradient-to-r from-[#0066FF] to-[#00FFFF] p-4 text-white font-bold flex items-center justify-between sticky top-0 z-50 shadow-md">
         <div className="flex items-center">
-          <BotIcon className="mr-2" />
+          <img 
+            src="/emblem.svg" 
+            alt="DAO PropTech Emblem" 
+            className="w-6 h-6 mr-2 invert"
+          />
           <span className="text-lg">DAO PropTech Assistant</span>
         </div>
         <Button 
