@@ -182,7 +182,7 @@ export default function ChatbotPage() {
   }
 
   return (
-    <div className={`flex flex-col min-h-[100dvh] ${isDarkMode ? 'bg-gray-900' : 'bg-white'}`}>
+    <div className={`flex flex-col min-h-[100dvh] ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-black'}`}>
       <header className="bg-transparent backdrop-blur-sm p-4 font-bold flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center">
           <img 
@@ -190,17 +190,15 @@ export default function ChatbotPage() {
             alt="DAO PropTech Emblem" 
             className={`w-6 h-6 mr-2 ${isDarkMode ? 'invert' : ''}`}
           />
-          <span className="!text-black dark:!text-white [&>*]:!text-black dark:[&>*]:!text-white">DAO Chat</span>
+          <span>DAO Chat</span>
         </div>
         <Button 
           variant="outline" 
           size="sm" 
           onClick={toggleTheme} 
-          className="!bg-white/10 hover:!bg-white/20 dark:!bg-gray-800/10 dark:hover:!bg-gray-700/20 
-            !border-gray-200/40 dark:!border-gray-700/40 hover:!border-gray-300 dark:hover:!border-gray-600 
-            !transition-colors [&>*]:!text-black dark:[&>*]:!text-white"
+          className={`transition-colors ${isDarkMode ? 'bg-gray-800/10 hover:bg-gray-700/20 border-gray-700/40 hover:border-gray-600 text-white' : 'bg-white/10 hover:bg-white/20 border-gray-200/40 hover:border-gray-300 text-black'}`}
         >
-          {isDarkMode ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
+          {isDarkMode ? <SunIcon className="h-4 w-4 text-white" /> : <MoonIcon className="h-4 w-4 text-black" />}
         </Button>
       </header>
 
