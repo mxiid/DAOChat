@@ -135,21 +135,25 @@ const GeometricShapes = () => (
   </div>
 )
 
-const ThinkingIndicator = ({ state, isDarkMode }: { state: 'thinking' | 'streaming', isDarkMode: boolean }) => (
-  <div className="flex items-center space-x-2 mb-4">
-    <div className="w-6 h-6 mr-2">
-      <AnimatedLogo thinking={true} />
+const ThinkingIndicator = ({ state, isDarkMode }: { state: 'thinking' | 'streaming' | 'idle', isDarkMode: boolean }) => {
+  if (state === 'idle') return null;
+
+  return (
+    <div className="flex items-center space-x-2 mb-4">
+      <div className="w-6 h-6 mr-2">
+        <AnimatedLogo thinking={true} />
+      </div>
+      <div className="flex items-center space-x-2 text-gray-400">
+        <span className="text-sm">{state === 'thinking' ? 'Thinking' : 'Streaming'}</span>
+        <span className="flex space-x-1">
+          <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+          <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+          <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+        </span>
+      </div>
     </div>
-    <div className="flex items-center space-x-2 text-gray-400">
-      <span className="text-sm">Thinking</span>
-      <span className="flex space-x-1">
-        <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-        <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-        <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-      </span>
-    </div>
-  </div>
-)
+  );
+};
 
 export default function ChatbotPage() {
   const { isDarkMode, toggleTheme } = useTheme()
@@ -238,7 +242,7 @@ export default function ChatbotPage() {
                   isStreaming={false}
                 />
               ))}
-              {botState === 'thinking' && <ThinkingIndicator state={botState} isDarkMode={isDarkMode} />}
+              <ThinkingIndicator state={botState} isDarkMode={isDarkMode} />
               {botState === 'streaming' && (
                 <MessageComponent
                   message={{ role: 'bot', content: streamingMessage }}
