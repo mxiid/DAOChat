@@ -188,7 +188,7 @@ export default function ChatbotPage() {
           <img 
             src="/emblem.svg" 
             alt="DAO PropTech Emblem" 
-            className="w-6 h-6 mr-2 dark:invert"
+            className={`w-6 h-6 mr-2 ${isDarkMode ? 'invert' : ''}`}
           />
           <span className="text-black dark:text-white">DAO Chat</span>
         </div>
