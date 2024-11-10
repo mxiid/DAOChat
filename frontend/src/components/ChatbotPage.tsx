@@ -182,7 +182,7 @@ export default function ChatbotPage() {
   }
 
   return (
-    <div className={`flex flex-col min-h-[100dvh] ${isDarkMode ? 'dark bg-gray-900' : 'bg-white'}`}>
+    <div className={`flex flex-col min-h-[100dvh] ${isDarkMode ? 'bg-gray-900' : 'bg-white'}`}>
       <header className="bg-transparent backdrop-blur-sm p-4 font-bold flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center">
           <img 
