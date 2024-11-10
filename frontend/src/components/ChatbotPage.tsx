@@ -7,7 +7,6 @@ import { Input } from "./ui/input"
 import { ScrollArea } from "./ui/scroll-area"
 import { SendIcon, Loader2Icon, SunIcon, MoonIcon } from 'lucide-react'
 import MessageComponent from './MessageComponent'
-import AnimatedLogo from './AnimatedLogo'
 
 
 interface Message {
@@ -141,7 +140,11 @@ const ThinkingIndicator = ({ state, isDarkMode }: { state: 'thinking' | 'streami
   return (
     <div className="flex items-center space-x-2 mb-4">
       <div className="w-6 h-6 mr-2">
-        <AnimatedLogo thinking={true} />
+        <img 
+          src="/emblem.svg" 
+          alt="DAO PropTech Emblem" 
+          className={`w-full h-full ${isDarkMode ? 'invert' : ''}`}
+        />
       </div>
       <div className="flex items-center space-x-2 text-gray-400">
         <span className="text-sm">{state === 'thinking' ? 'Thinking' : 'Streaming'}</span>
@@ -242,7 +245,9 @@ export default function ChatbotPage() {
                   isStreaming={false}
                 />
               ))}
-              <ThinkingIndicator state={botState} isDarkMode={isDarkMode} />
+              <div className={`transition-opacity duration-300 ${botState !== 'idle' ? 'opacity-100' : 'opacity-0'}`}>
+                <ThinkingIndicator state={botState} isDarkMode={isDarkMode} />
+              </div>
               {botState === 'streaming' && (
                 <MessageComponent
                   message={{ role: 'bot', content: streamingMessage }}
