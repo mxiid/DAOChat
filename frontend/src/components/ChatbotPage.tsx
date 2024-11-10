@@ -190,13 +190,13 @@ export default function ChatbotPage() {
             alt="DAO PropTech Emblem" 
             className="w-6 h-6 mr-2 dark:invert"
           />
-          <span className="text-lg text-gray-900 dark:text-white">DAO Chat</span>
+          <span className="text-lg text-black dark:text-white">DAO Chat</span>
         </div>
         <Button 
           variant="outline" 
           size="sm" 
           onClick={toggleTheme} 
-          className="bg-white/10 dark:bg-gray-800/10 hover:bg-gray-100/20 dark:hover:bg-gray-700/20 text-gray-900 dark:text-white border-gray-200/40 dark:border-gray-700/40 hover:border-gray-300 dark:hover:border-gray-600 transition-colors"
+          className="bg-white/10 hover:bg-white/20 dark:bg-gray-800/10 dark:hover:bg-gray-700/20 border-gray-200/40 dark:border-gray-700/40 hover:border-gray-300 dark:hover:border-gray-600 transition-colors text-black dark:text-white"
         >
           {isDarkMode ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
         </Button>
