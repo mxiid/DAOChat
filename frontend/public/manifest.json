@@ -1,6 +1,6 @@
 {
   "short_name": "DAO Chat",
-  "name": "DAO AI Assistant",
+  "name": "DAO Chat",
   "icons": [
     {
       "src": "favicon.ico",
@@ -8,18 +8,18 @@
       "type": "image/x-icon"
     },
     {
-      "src": "logo192.png",
-      "type": "image/png",
-      "sizes": "192x192"
+      "src": "emblem.svg",
+      "type": "image/svg+xml",
+      "sizes": "512x512"
     },
     {
-      "src": "logo512.png",
+      "src": "apple-touch-icon.png",
       "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "180x180"
     }
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
+  "theme_color": "#0066FF",
   "background_color": "#ffffff"
 }
