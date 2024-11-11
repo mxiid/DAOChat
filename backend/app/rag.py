@@ -206,12 +206,20 @@ class RAG:
 
             memory = self.memory_pools[session_id]
 
+            # Add query classification
+            is_overview_query = any(word in question.lower() 
+                                for word in ['overview', 'all projects', 'summary', 'list'])
+            
             # Create the chain with the session-specific memory
             qa_chain = ConversationalRetrievalChain.from_llm(
                 llm=self.llm,
                 retriever=self.vectordb.as_retriever(
                     search_type="mmr",
-                    search_kwargs={"k": 4, "fetch_k": 8}
+                    search_kwargs={
+                        "k": 6 if is_overview_query else 4,  # Retrieve more docs for overviews
+                        "fetch_k": 12 if is_overview_query else 8,
+                        "lambda_mult": 0.7 if is_overview_query else 0.5  # Increase diversity for overviews
+                    }
                 ),
                 memory=memory,
                 combine_docs_chain_kwargs={"prompt": self.prompt_template},
