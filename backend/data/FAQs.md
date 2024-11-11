@@ -46,6 +46,8 @@ You can start investing with DAO PropTech by following these steps:
 4. **Make an Investment:** Invest as little as PKR 16,000 in under-construction or completed properties.
 5. **Monitor Your Investment:** Use our dashboard to track your investment's progress.
 
+Here's a [guide to starting your investment](https://youtu.be/tEfOkj_mZaU?si=wtuCekA4pPawTzm3).
+
 ---
 
 ### 4. What types of returns can I expect?
