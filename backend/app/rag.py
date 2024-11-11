@@ -40,27 +40,30 @@ class RAG:
         try:
             self.embeddings = OpenAIEmbeddings()
             self.vectordb = self._load_vectordb()
+            
+            # Single, clear system message
+            self.system_message = """
+            You are an expert AI assistant for DAO Proptech. Your role is to provide detailed, well-structured information about DAO Proptech's real estate investment projects.
 
-            # Define system message once
-            self.system_message = """Answer questions and provide insights solely based on the provided DAO whitepapers and any additional documents. All information shared should be grounded in these whitepapers, supplemented with general knowledge only when it is clearly compatible with the concepts directly discussed in the documents. Answer concisely, offering clarity and actionable insights that relate specifically to DAO governance, structure, PropTech applications, and related DAO operations as detailed in the documents. Always prioritize accuracy and avoid assumptions not backed by the documents. If needed, indicate if a question is beyond the scope of the provided material.
+            When responding:
+            1. Structure responses with clear headings
+            2. Use bullet points for features and amenities
+            3. Include all available numerical data (prices, ROI, sizes)
+            4. Clearly indicate when specific information is not available
+            5. Format responses using Markdown
+            """
 
-            The primary goal is to engage with clients by addressing frequently asked questions. Engage in a professional, informative tone and avoid speculative answers. Where clarifications are needed, seek to use the document content to fill in gaps or request further details from the user."""
-
-            # Update ChatOpenAI initialization to use model_kwargs
             self.llm = ChatOpenAI(
                 temperature=0, 
-                model_name='gpt-4o',
-                model_kwargs={"system_message": self.system_message}
+                model_name='gpt-4'
             )
-            self.prompt_template = self._create_prompt_template()
-
-            # Remove the global memory since we're using per-session memory
-            # self.memory = ConversationBufferMemory(...)
-
-            # Initialize memory pools with a default TTL (e.g., 30 minutes)
+            
+            # Remove redundant prompt template
+            # self.prompt_template = self._create_prompt_template()
+            
             self.memory_pools = {}
-            self.memory_ttl = 1800  # 30 minutes in seconds
             self.last_access = {}
+            self.memory_ttl = 1800
 
             # CPU-bound task executor (70% of cores for CPU tasks)
             self.cpu_executor = ThreadPoolExecutor(
@@ -106,65 +109,27 @@ class RAG:
         else:
             raise FileNotFoundError(f"FAISS index not found at {Config.FAISS_INDEX_PATH}")
 
-    def _create_prompt_template(self):
-        # Simplified prompt template that focuses on the current context and question
-        template = """
-        Context: {context}
-
-        Current Conversation:
-        {chat_history}
-
-        Human: {question}
-
-        Assistant:"""
-        return PromptTemplate(template=template, input_variables=["context", "chat_history", "question"])
-
     async def _process_request(self, question: str, session_id: str):
         try:
             query_type = self._classify_query(question.lower())
             project_name = self._extract_project_name(question)
-
-            if project_name:
-                # Get project overview first
-                overview_docs = self.vectordb.similarity_search(
-                    f"{project_name} overview",
-                    k=1,
-                    filter={"project": project_name, "subsection": "overview"}
-                )
-
-                # Get relevant subsection based on query type
-                subsection_filter = self._get_subsection_filter(query_type)
-                specific_docs = self.vectordb.similarity_search(
-                    question,
-                    k=2,
-                    filter={"project": project_name, "subsection": subsection_filter}
-                )
-
-                # Combine and structure the context
-                context = self._format_project_response(overview_docs + specific_docs)
-
-            else:
-                # Handle general queries
-                docs = self.vectordb.similarity_search(question, k=4)
-                context = self._format_general_response(docs)
-
-            # Create messages for the chat
+            
+            # Get relevant documents
+            docs = self.vectordb.similarity_search(
+                question,
+                k=4,
+                filter={"project": project_name} if project_name else None
+            )
+            
+            # Create context from documents
+            context = "\n\n".join(doc.page_content for doc in docs)
+            
+            # Simple message structure
             messages = [
                 SystemMessage(content=self.system_message),
-                HumanMessage(content=f"""Based on the following detailed information, provide a comprehensive and well-structured response:
-
-Context:
-{context}
-
-Question: {question}
-
-Please ensure to:
-1. Include all relevant project details
-2. Format the response with clear sections and bullet points
-3. Highlight key investment features and amenities
-4. Include specific numbers and metrics where available""")
+                HumanMessage(content=f"Context:\n{context}\n\nQuestion: {question}")
             ]
-
+            
             response = await self.llm.apredict_messages(messages)
             return response.content
 
@@ -191,16 +156,16 @@ Please ensure to:
 
         context = f"""Project Overview: {metadata.get('project', 'Unknown Project')}
 
-Key Details:
-- Location: {metadata.get('location', '[Not specified]')}
-- Project Type: {metadata.get('project_type', '[Not specified]')}
-- Total Size: {metadata.get('size', '[Not specified]')}
-- Completion Date: {metadata.get('completion', '[Not specified]')}
-- Token Price: {metadata.get('price', '[Not specified]')}
-- Estimated Rental Yield: {metadata.get('roi', '[Not specified]')}
+            Key Details:
+            - Location: {metadata.get('location', '[Not specified]')}
+            - Project Type: {metadata.get('project_type', '[Not specified]')}
+            - Total Size: {metadata.get('size', '[Not specified]')}
+            - Completion Date: {metadata.get('completion', '[Not specified]')}
+            - Token Price: {metadata.get('price', '[Not specified]')}
+            - Estimated Rental Yield: {metadata.get('roi', '[Not specified]')}
 
-Detailed Information:
-"""
+            Detailed Information:
+        """
 
         # Add content from all documents
         for doc in docs:
