@@ -34,12 +34,25 @@ logger = logging.getLogger(__name__)
 class DocumentProcessor:
     def __init__(self):
         self.embeddings = OpenAIEmbeddings()
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,
-            chunk_overlap=50,
-            length_function=len,
-            separators=["\n\n", "\n", ". ", " ", ""]
-        )
+        
+        # Create different splitters for different content types
+        self.splitters = {
+            "overview": RecursiveCharacterTextSplitter(
+                chunk_size=2000,
+                chunk_overlap=200,
+                separators=["\n\n", "\n", ". ", " ", ""]
+            ),
+            "metadata": RecursiveCharacterTextSplitter(
+                chunk_size=500,
+                chunk_overlap=100,
+                separators=["\n\n", "\n", ". ", " ", ""]
+            ),
+            "content": RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=150,
+                separators=["\n\n", "\n", ". ", " ", ""]
+            )
+        }
         self.api_key = os.getenv("UNSTRUCTURED_API_KEY")
         self.api_url = os.getenv("UNSTRUCTURED_API_URL", "https://api.unstructured.io/general/v0/general")
         if not self.api_key:
@@ -272,12 +285,17 @@ class DocumentProcessor:
                     "section_title": current_section[0].get("text", "")[:100],
                     "content_structure": element_type,
                     "semantic_markers": [marker for marker in semantic_markers["section_start"] 
-                                          if marker in doc_text.lower()],
+                                      if marker in doc_text.lower()],
                     "contains_numerical_data": bool(re.search(r'\d+', doc_text)),
                     "contains_lists": bool(re.search(r'(?:^|\n)\s*[•\-\d]+\.?\s+', doc_text)),
                     "contains_tables": bool(re.search(r'\|\s*\w+\s*\|', doc_text)),
                     "text_length": len(doc_text),
-                    "paragraph_count": doc_text.count('\n\n') + 1
+                    "content_type": "overview" if "overview" in file_path.lower() else "detail",
+                    # Extract specific data points
+                    "price": re.search(r'(?:PKR|Rs\.?)\s*([\d,]+)', doc_text),
+                    "location": re.search(r'(?:location|located in|address):\s*([^•\n]+)', doc_text, re.I),
+                    "roi": re.search(r'(?:ROI|return|yield):\s*([\d.]+%)', doc_text, re.I),
+                    "completion": re.search(r'(?:completion|timeline|complete by):\s*(\d{4})', doc_text, re.I)
                 }
 
                 documents.append(
@@ -316,7 +334,12 @@ class DocumentProcessor:
                 "contains_lists": bool(re.search(r'(?:^|\n)\s*[•\-\d]+\.?\s+', doc_text)),
                 "contains_tables": bool(re.search(r'\|\s*\w+\s*\|', doc_text)),
                 "text_length": len(doc_text),
-                "paragraph_count": doc_text.count('\n\n') + 1
+                "content_type": "overview" if "overview" in file_path.lower() else "detail",
+                # Extract specific data points
+                "price": re.search(r'(?:PKR|Rs\.?)\s*([\d,]+)', doc_text),
+                "location": re.search(r'(?:location|located in|address):\s*([^•\n]+)', doc_text, re.I),
+                "roi": re.search(r'(?:ROI|return|yield):\s*([\d.]+%)', doc_text, re.I),
+                "completion": re.search(r'(?:completion|timeline|complete by):\s*(\d{4})', doc_text, re.I)
             }
 
             documents.append(
@@ -329,61 +352,52 @@ class DocumentProcessor:
         return documents
 
     def create_or_update_index(self, directory: str, existing_index_path: Optional[str] = None) -> FAISS:
-        """Create or update FAISS index from documents"""
         try:
-            # Process all supported file types
             all_docs = []
             
-            # Define supported file types and their processors
+            # Define file processors
             file_processors = {
                 "*.pdf": self.process_pdf,
                 "*.md": self.process_markdown,
                 "*.csv": self.process_csv
             }
             
-            # Process each file type
+            # Process overview document first
+            overview_file = Path(directory) / "overview.md"
+            if overview_file.exists():
+                logger.info("Processing overview document...")
+                overview_docs = self.process_markdown(str(overview_file))
+                all_docs.extend(overview_docs)
+            
+            # Then process other files
             for pattern, processor in file_processors.items():
                 files = list(Path(directory).glob(pattern))
                 for file in files:
-                    try:
-                        docs = processor(str(file))
-                        all_docs.extend(docs)
-                    except Exception as e:
-                        logger.error(f"Error processing {file}: {e}")
-                        continue
-
-            if not all_docs:
-                raise ValueError(f"No valid documents found in {directory}")
-
-            # Create new vectorstore
+                    if file != overview_file:  # Skip overview file as it's already processed
+                        try:
+                            logger.info(f"Processing {file}...")
+                            docs = processor(str(file))
+                            all_docs.extend(docs)
+                        except Exception as e:
+                            logger.error(f"Error processing {file}: {e}")
+                            continue
+            
+            # Create embeddings and index
+            logger.info("Creating embeddings and index...")
             texts = [doc.page_content for doc in all_docs]
             metadatas = [doc.metadata for doc in all_docs]
-
+            
+            # Create new vectorstore
             new_db = FAISS.from_texts(
-                texts,
-                self.embeddings,
+                texts=texts,
+                embedding=self.embeddings,
                 metadatas=metadatas
             )
-
-            # If updating existing index
-            if existing_index_path and Path(existing_index_path).exists():
-                try:
-                    existing_db = FAISS.load_local(
-                        existing_index_path, 
-                        self.embeddings,
-                        allow_dangerous_deserialization=True
-                    )
-                    existing_db.merge_from(new_db)
-                    new_db = existing_db
-                    logger.info(f"Updated existing index at {existing_index_path}")
-                except Exception as e:
-                    logger.error(f"Error updating existing index: {e}")
-                    logger.info("Creating new index instead")
-
+            
             # Save the index
             new_db.save_local(Config.FAISS_INDEX_PATH)
             logger.info(f"Saved index with {len(texts)} documents to {Config.FAISS_INDEX_PATH}")
-
+            
             return new_db
 
         except Exception as e:
@@ -463,37 +477,42 @@ class DocumentProcessor:
             with open(file_path, 'r', encoding='utf-8') as f:
                 # Parse frontmatter and content
                 post = frontmatter.load(f)
-                
-                # Extract metadata from frontmatter
-                metadata = {
+                content = post.content
+                metadata = post.metadata
+
+            # Special handling for overview document
+            if "overview" in file_path.lower():
+                # Use larger chunk size for overview
+                chunks = self.splitters["overview"].split_text(content)
+            else:
+                # Use metadata chunk size for frontmatter-heavy sections
+                if metadata:
+                    chunks = self.splitters["metadata"].split_text(content)
+                else:
+                    chunks = self.splitters["content"].split_text(content)
+
+            documents = []
+            for chunk in chunks:
+                # Enhance metadata with frontmatter
+                enhanced_metadata = {
                     "source": file_path,
-                    "project": post.metadata.get("project", Path(file_path).stem),
-                    "document_type": "markdown",
-                    **post.metadata  # Include all frontmatter metadata
+                    "project": metadata.get("project", Path(file_path).stem),
+                    "content_type": "overview" if "overview" in file_path.lower() else "detail",
+                    "price": metadata.get("price_sqft", None),
+                    "location": metadata.get("location", None),
+                    "rental_yield": metadata.get("rental yield", None),
+                    "completion": metadata.get("completion_year", None),
+                    **metadata  # Include all other frontmatter metadata
                 }
-                
-                # Split content into chunks
-                chunks = self.text_splitter.split_text(post.content)
-                
-                documents = []
-                for i, chunk in enumerate(chunks):
-                    chunk_metadata = {
-                        **metadata,
-                        "chunk_index": i,
-                        "contains_numerical_data": bool(re.search(r'\d+', chunk)),
-                        "contains_lists": bool(re.search(r'(?:^|\n)\s*[•\-\d]+\.?\s+', chunk)),
-                        "contains_tables": bool(re.search(r'\|\s*\w+\s*\|', chunk)),
-                        "text_length": len(chunk)
-                    }
-                    
-                    documents.append(
-                        Document(
-                            page_content=chunk,
-                            metadata=chunk_metadata
-                        )
+
+                documents.append(
+                    Document(
+                        page_content=chunk,
+                        metadata=enhanced_metadata
                     )
-                
-                return documents
+                )
+
+            return documents
                 
         except Exception as e:
             logger.error(f"Error processing markdown {file_path}: {str(e)}")
