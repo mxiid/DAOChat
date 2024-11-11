@@ -170,51 +170,54 @@ class RAG:
     async def _process_request(self, question: str, session_id: str):
         try:
             query_type = self._classify_query(question.lower())
+            project_name = self._extract_project_name(question)
             
-            # For overview queries, get all project documents first
-            if "overview" in question.lower() or "all projects" in question.lower():
-                # Get overview documents with metadata
-                docs = self.vectordb.similarity_search(
-                    "project overview details",
-                    k=20,
-                    filter={"chunk_type": "overview"}
+            # For project-specific queries
+            if project_name:
+                # First try to get project overview
+                project_docs = self.vectordb.similarity_search(
+                    f"{project_name} overview details",
+                    k=4,
+                    filter={"project": project_name}
                 )
                 
-                # If no overview documents found, try without filter
-                if not docs:
-                    docs = self.vectordb.similarity_search(
-                        "project details location price roi",
-                        k=20
+                # Get additional context based on query type
+                if query_type in ["price", "location", "roi", "completion"]:
+                    specific_docs = self.vectordb.similarity_search(
+                        f"{project_name} {query_type}",
+                        k=2,
+                        filter={"project": project_name}
                     )
-                
-                # Extract unique project information from metadata
-                projects_info = {}
-                for doc in docs:
-                    metadata = doc.metadata
-                    project = metadata.get('project')
-                    if project and project not in projects_info:
-                        projects_info[project] = {
-                            'location': metadata.get('location', '[Location details not specified]'),
-                            'price': metadata.get('price_sqft', metadata.get('price', '[Price not specified]')),
-                            'roi': metadata.get('roi', metadata.get('rental_yield', '[ROI details not specified]')),
-                            'completion': metadata.get('completion', '[Timeline details not specified]'),
-                            'type': metadata.get('type', '[Project type not specified]'),
-                            'features': metadata.get('features', '[Key features not specified]')
-                        }
+                    project_docs.extend(specific_docs)
                 
                 # Create structured context
-                context = "Here's a comprehensive overview of all DAO Proptech projects:\n\n"
-                for project, info in projects_info.items():
-                    context += f"""
-### {project}
-- **Location:** {info['location']}
-- **Project Type:** {info['type']}
-- **Timeline:** {info['completion']}
-- **Key Features:** {info['features']}
-- **Investment Metrics:** {info['price']}
-- **ROI Figures:** {info['roi']}
-
-"""
+                context = f"Here are the details for {project_name}:\n\n"
+                
+                # Extract and deduplicate information
+                project_info = {}
+                for doc in project_docs:
+                    metadata = doc.metadata
+                    if not project_info.get('location'):
+                        project_info['location'] = metadata.get('location')
+                    if not project_info.get('type'):
+                        project_info['type'] = metadata.get('type')
+                    if not project_info.get('roi'):
+                        project_info['roi'] = metadata.get('roi')
+                    if not project_info.get('completion'):
+                        project_info['completion'] = metadata.get('completion')
+                    if not project_info.get('features'):
+                        project_info['features'] = metadata.get('features')
+                    
+                # Structure the context
+                context += f"""### Project Details
+- Location: {project_info.get('location', '[Location details not specified]')}
+- Project Type: {project_info.get('type', '[Type not specified]')}
+- ROI Figures: {project_info.get('roi', '[ROI details not specified]')}
+- Timeline: {project_info.get('completion', '[Timeline not specified]')}
+- Key Features: {project_info.get('features', '[Features not specified]')}\n\n"""
+                
+                # Add full document content
+                context += "\nDetailed Information:\n" + "\n\n".join(doc.page_content for doc in project_docs)
             else:
                 # Handle specific queries
                 docs = self.vectordb.similarity_search(
@@ -250,18 +253,19 @@ Question: {question}""")
         return new_count > existing_count
 
     def _extract_project_name(self, query: str) -> Optional[str]:
-        """Extract project name from query"""
-        project_patterns = [
-            r"urban\s+dwellings",
-            r"elements\s+residencia",
-            r"globe\s+residency",
-            r"broad\s+peak\s+realty",
-            r"akron"
-        ]
+        """Extract and validate project name from query"""
+        project_mapping = {
+            "urban dwellings": "Urban Dwellings",
+            "elements residencia": "Elements Residencia",
+            "globe residency": "Globe Residency Apartments",
+            "broad peak": "Broad Peak Realty",
+            "akron": "Akron"
+        }
         
-        for pattern in project_patterns:
-            if match := re.search(pattern, query.lower()):
-                return match.group(0).title()
+        query_lower = query.lower()
+        for key, value in project_mapping.items():
+            if key in query_lower:
+                return value
         return None
 
     async def query(self, question: str, session_id: str = None) -> str:
@@ -357,56 +361,70 @@ Question: {question}""")
             yield "An error occurred while processing your request."
 
     def add_texts(self, texts: list[str]):
-        # Create different types of chunks for different purposes
-        splitters = {
-            "overview": RecursiveCharacterTextSplitter(
-                chunk_size=2000,
-                chunk_overlap=200,
-                separators=["\n\n", "\n", ". ", " ", ""]
-            ),
-            "metadata": RecursiveCharacterTextSplitter(
-                chunk_size=500,
-                chunk_overlap=50,
-                separators=["\n---\n", "\n\n", "\n", ". "]
-            ),
-            "content": RecursiveCharacterTextSplitter(
-                chunk_size=1000,
-                chunk_overlap=100,
-                separators=["\n\n", "\n", ". ", " ", ""]
-            )
-        }
-
+        """Process and index documents with better chunking strategy"""
         processed_chunks = []
+        
         for text in texts:
-            # Determine text type
-            if "project_summary" in text.lower() or "overview" in text.lower():
-                chunks = splitters["overview"].split_text(text)
-                chunk_type = "overview"
-            elif text.startswith("---"):  # Frontmatter/metadata
-                chunks = splitters["metadata"].split_text(text)
-                chunk_type = "metadata"
-            else:
-                chunks = splitters["content"].split_text(text)
-                chunk_type = "content"
-
-            # Extract metadata from text (especially from frontmatter)
+            # Extract metadata first
             metadata = self._extract_metadata(text)
             
-            for chunk in chunks:
-                chunk_metadata = {
-                    **metadata,
-                    "chunk_type": chunk_type,
-                    "contains_price": bool(re.search(r'(?:price|cost|PKR|Rs\.?)\s*[\d,]+', chunk.lower())),
-                    "contains_location": bool(re.search(r'(?:located|location|address|in)\s+\w+', chunk.lower())),
-                    "contains_roi": bool(re.search(r'(?:ROI|return|yield)\s*[\d.]+%', chunk.lower())),
-                    "contains_completion": bool(re.search(r'(?:complete|completion|timeline)\s*\d{4}', chunk.lower())),
-                }
-                processed_chunks.append(Document(page_content=chunk, metadata=chunk_metadata))
-
-        # Create and merge the new vectorstore
-        new_db = FAISS.from_documents(processed_chunks, self.embeddings)
-        self.vectordb.merge_from(new_db)
-        self.vectordb.save_local(Config.FAISS_INDEX_PATH)
+            # Split text into sections
+            sections = {
+                "overview": "",
+                "details": "",
+                "features": "",
+                "pricing": "",
+                "location": ""
+            }
+            
+            # Extract sections using regex
+            if overview_match := re.search(r'(?:overview|summary):(.*?)(?=\n\w+:|$)', text, re.I | re.S):
+                sections["overview"] = overview_match.group(1).strip()
+            if features_match := re.search(r'features:(.*?)(?=\n\w+:|$)', text, re.I | re.S):
+                sections["features"] = features_match.group(1).strip()
+            if location_match := re.search(r'location:(.*?)(?=\n\w+:|$)', text, re.I | re.S):
+                sections["location"] = location_match.group(1).strip()
+            
+            # Process each section with appropriate chunk size
+            for section_type, content in sections.items():
+                if not content:
+                    continue
+                    
+                chunk_size = 2000 if section_type == "overview" else 500
+                overlap = 200 if section_type == "overview" else 50
+                
+                splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=chunk_size,
+                    chunk_overlap=overlap,
+                    separators=["\n\n", "\n", ". ", " ", ""]
+                )
+                
+                chunks = splitter.split_text(content)
+                
+                for chunk in chunks:
+                    chunk_metadata = {
+                        **metadata,
+                        "section_type": section_type,
+                        "chunk_type": section_type,
+                        "contains_price": bool(re.search(r'(?:price|cost|PKR|Rs\.?)\s*[\d,]+', chunk, re.I)),
+                        "contains_location": bool(re.search(r'(?:located|location|address|in)\s+\w+', chunk, re.I)),
+                        "contains_roi": bool(re.search(r'(?:ROI|return|yield)\s*[\d.]+%', chunk, re.I)),
+                        "contains_completion": bool(re.search(r'(?:complete|completion|timeline)\s*\d{4}', chunk, re.I))
+                    }
+                    
+                    processed_chunks.append(Document(
+                        page_content=chunk,
+                        metadata=chunk_metadata
+                    ))
+        
+        # Create new vectorstore
+        if processed_chunks:
+            new_db = FAISS.from_documents(processed_chunks, self.embeddings)
+            if hasattr(self, 'vectordb') and self.vectordb is not None:
+                self.vectordb.merge_from(new_db)
+            else:
+                self.vectordb = new_db
+            self.vectordb.save_local(Config.FAISS_INDEX_PATH)
 
     async def cleanup_old_sessions(self):
         """Clean up old session memories"""
