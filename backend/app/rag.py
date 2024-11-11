@@ -25,6 +25,7 @@ from fastapi import HTTPException
 import time
 from datetime import datetime
 from typing import List, Optional
+import re
 
 # At the top of your file, after imports
 os.environ['TIKTOKEN_CACHE_DIR'] = '/app/tiktoken'
@@ -169,60 +170,73 @@ class RAG:
     async def _process_request(self, question: str, session_id: str):
         try:
             query_type = self._classify_query(question.lower())
-            project_name = self._extract_project_name(question)
             
-            # Enhance search strategy based on query type
-            search_kwargs = {
-                "k": 20 if query_type == "overview" else 4,
-                "fetch_k": 40 if query_type == "overview" else 8,
-            }
-            
-            if project_name:
-                search_kwargs["filter"] = {
-                    "project": project_name,
-                    **({"chunk_type": "overview"} if query_type == "overview" else {}),
-                    **({"contains_" + query_type: True} if query_type in ["price", "location", "roi", "completion"] else {})
-                }
-            elif query_type == "overview":
-                search_kwargs["filter"] = {"chunk_type": "overview"}
+            # For overview queries, get all project documents first
+            if "overview" in question.lower() or "all projects" in question.lower():
+                # Get overview documents with metadata
+                docs = self.vectordb.similarity_search(
+                    "project overview details",
+                    k=20,
+                    filter={"chunk_type": "overview"}
+                )
+                
+                # If no overview documents found, try without filter
+                if not docs:
+                    docs = self.vectordb.similarity_search(
+                        "project details location price roi",
+                        k=20
+                    )
+                
+                # Extract unique project information from metadata
+                projects_info = {}
+                for doc in docs:
+                    metadata = doc.metadata
+                    project = metadata.get('project')
+                    if project and project not in projects_info:
+                        projects_info[project] = {
+                            'location': metadata.get('location', '[Location details not specified]'),
+                            'price': metadata.get('price_sqft', metadata.get('price', '[Price not specified]')),
+                            'roi': metadata.get('roi', metadata.get('rental_yield', '[ROI details not specified]')),
+                            'completion': metadata.get('completion', '[Timeline details not specified]'),
+                            'type': metadata.get('type', '[Project type not specified]'),
+                            'features': metadata.get('features', '[Key features not specified]')
+                        }
+                
+                # Create structured context
+                context = "Here's a comprehensive overview of all DAO Proptech projects:\n\n"
+                for project, info in projects_info.items():
+                    context += f"""
+### {project}
+- **Location:** {info['location']}
+- **Project Type:** {info['type']}
+- **Timeline:** {info['completion']}
+- **Key Features:** {info['features']}
+- **Investment Metrics:** {info['price']}
+- **ROI Figures:** {info['roi']}
 
-            docs = self.vectordb.similarity_search(
-                question,
-                **search_kwargs
-            )
-
-            # Process and structure the context
-            context = self._structure_context(docs, query_type, project_name)
-            
-            # Use memory more effectively
-            memory = self.memory_pools.get(session_id)
-            if memory:
-                chat_history = memory.chat_memory.messages if hasattr(memory, 'chat_memory') else []
-                # Limit chat history to last 5 exchanges
-                if len(chat_history) > 10:
-                    chat_history = chat_history[-10:]
+"""
             else:
-                chat_history = []
+                # Handle specific queries
+                docs = self.vectordb.similarity_search(
+                    question,
+                    k=4
+                )
+                context = "\n\n".join(doc.page_content for doc in docs)
 
-            # Create the chain with enhanced context
-            qa_chain = ConversationalRetrievalChain.from_llm(
-                llm=self.llm,
-                retriever=FakeRetriever(docs),
-                memory=memory,
-                combine_docs_chain_kwargs={
-                    "prompt": self.prompt_template,
-                    "document_prompt": self._get_document_prompt(query_type)
-                },
-                return_source_documents=True,
-                return_generated_question=True,
-                output_key="answer"
-            )
+            # Create messages for the chat
+            messages = [
+                SystemMessage(content=self.system_message),
+                HumanMessage(content=f"""Based on the following context, please provide a detailed response. If specific information is not available in the context, indicate that it's not specified.
 
-            result = await qa_chain.ainvoke({
-                "question": question,
-                "chat_history": chat_history
-            })
-            return result['answer']
+Context:
+{context}
+
+Question: {question}""")
+            ]
+
+            # Get response from LLM
+            response = await self.llm.apredict_messages(messages)
+            return response.content
 
         except Exception as e:
             logger.error(f"Error in _process_request: {str(e)}")
@@ -236,16 +250,19 @@ class RAG:
         return new_count > existing_count
 
     def _extract_project_name(self, query: str) -> Optional[str]:
-        """Extract project name from query by checking against document metadata"""
-        # Get all unique project names from metadata
-        docs = self.vectordb.similarity_search("", k=20)  # Get a sample of documents
-        project_names = {doc.metadata.get('project') for doc in docs if doc.metadata.get('project')}
+        """Extract project name from query"""
+        project_patterns = [
+            r"urban\s+dwellings",
+            r"elements\s+residencia",
+            r"globe\s+residency",
+            r"broad\s+peak\s+realty",
+            r"akron"
+        ]
         
-        # Find matching project name in query
-        return next(
-            (p for p in project_names if p and p.lower() in query.lower()),
-            None
-        )
+        for pattern in project_patterns:
+            if match := re.search(pattern, query.lower()):
+                return match.group(0).title()
+        return None
 
     async def query(self, question: str, session_id: str = None) -> str:
         async with self.request_semaphore:
@@ -424,6 +441,62 @@ class RAG:
             template="{page_content}\n",
             input_variables=["page_content"]
         )
+
+    def _extract_metadata(self, text: str) -> dict:
+        """Extract metadata from text content"""
+        metadata = {}
+        
+        # Extract project name
+        project_matches = re.search(r'(?:project|title):\s*([^\n]+)', text, re.I)
+        if project_matches:
+            metadata['project'] = project_matches.group(1).strip()
+        
+        # Extract location
+        location_matches = re.search(r'location:\s*([^\n]+)', text, re.I)
+        if location_matches:
+            metadata['location'] = location_matches.group(1).strip()
+        
+        # Extract price
+        price_matches = re.search(r'(?:price|cost):\s*(?:PKR|Rs\.?)?\s*([\d,]+)', text, re.I)
+        if price_matches:
+            metadata['price'] = price_matches.group(1).strip()
+        
+        # Extract ROI
+        roi_matches = re.search(r'(?:ROI|return|yield):\s*([\d.]+%)', text, re.I)
+        if roi_matches:
+            metadata['roi'] = roi_matches.group(1).strip()
+        
+        # Extract completion date
+        completion_matches = re.search(r'(?:completion|timeline):\s*(\d{4})', text, re.I)
+        if completion_matches:
+            metadata['completion'] = completion_matches.group(1).strip()
+        
+        # Extract project type
+        type_matches = re.search(r'type:\s*([^\n]+)', text, re.I)
+        if type_matches:
+            metadata['type'] = type_matches.group(1).strip()
+        
+        # Extract features
+        features_section = re.search(r'features:(.*?)(?:\n\w+:|$)', text, re.I | re.S)
+        if features_section:
+            features = re.findall(r'[-•]\s*([^\n]+)', features_section.group(1))
+            metadata['features'] = ', '.join(features) if features else None
+        
+        return metadata
+
+    def _classify_query(self, query: str) -> str:
+        """Classify query type for optimized retrieval"""
+        if any(word in query for word in ['overview', 'all projects', 'summary', 'list']):
+            return "overview"
+        elif any(word in query for word in ['price', 'cost', 'sqft']):
+            return "price"
+        elif any(word in query for word in ['location', 'where']):
+            return "location"
+        elif any(word in query for word in ['roi', 'return', 'yield']):
+            return "roi"
+        elif any(word in query for word in ['complete', 'finish', 'when']):
+            return "completion"
+        return "general"
 
 class FakeRetriever:
     """Helper class to use pre-retrieved documents"""
