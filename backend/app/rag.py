@@ -6,7 +6,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader, CSVLoader
-from langchain.schema import HumanMessage
+from langchain.schema import HumanMessage, SystemMessage
 from .config import Config
 import os
 import logging
@@ -215,8 +215,7 @@ class RAG:
                 streaming=True,
                 callbacks=[callback],
                 temperature=0,
-                model_name='gpt-4o',
-                model_kwargs={"system_message": self.system_message}  # Use the same system message
+                model_name='gpt-4o'
             )
 
             # Get relevant documents first
@@ -244,8 +243,11 @@ class RAG:
                 question=question
             )
 
-            # Create messages for the chat
-            messages = [HumanMessage(content=formatted_prompt)]
+            # Create messages for the chat, including system message
+            messages = [
+                SystemMessage(content=self.system_message),
+                HumanMessage(content=formatted_prompt)
+            ]
 
             # Stream the response
             async for chunk in streaming_llm.astream(messages):
