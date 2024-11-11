@@ -486,7 +486,7 @@ Question: {question}""")
 
     def _classify_query(self, query: str) -> str:
         """Classify query type for optimized retrieval"""
-        if any(word in query for word in ['overview', 'all projects', 'summary', 'list']):
+        if any(word in query for word in ['overview', 'all projects', 'summary', 'list', 'details']):
             return "overview"
         elif any(word in query for word in ['price', 'cost', 'sqft']):
             return "price"
