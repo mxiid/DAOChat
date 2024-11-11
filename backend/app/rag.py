@@ -320,19 +320,32 @@ class RAG:
             yield "An error occurred while processing your request."
 
     def add_texts(self, texts: list[str]):
-        # Create text splitter with smaller chunks and more overlap for numerical data
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,  # Smaller chunks to keep related data together
-            chunk_overlap=100,  # More overlap to maintain context
-            length_function=len,
-            separators=["\n\n", "\n", ". ", " ", ""]
+        # Create two types of chunks: detailed and overview
+        detail_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=500,
+            chunk_overlap=100,
         )
-
-        # Split texts into chunks
-        chunks = text_splitter.split_text('\n'.join(texts))
-
+        
+        overview_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=2000,  # Larger chunks for overviews
+            chunk_overlap=200,
+        )
+        
+        # Create overview chunks by combining project summaries
+        overview_text = "\n\n=== PROJECT OVERVIEW ===\n\n"
+        for text in texts:
+            if "project_summary" in text.lower():  # Or another identifier
+                overview_text += text + "\n\n"
+        
+        # Split both types of content
+        detail_chunks = detail_splitter.split_text('\n'.join(texts))
+        overview_chunks = overview_splitter.split_text(overview_text)
+        
+        # Combine all chunks
+        all_chunks = overview_chunks + detail_chunks
+        
         # Create and merge the new vectorstore
-        new_db = FAISS.from_texts(chunks, self.embeddings)
+        new_db = FAISS.from_texts(all_chunks, self.embeddings)
         self.vectordb.merge_from(new_db)
         self.vectordb.save_local(Config.FAISS_INDEX_PATH)
         print(f"Added {len(texts)} new documents to the FAISS index")
