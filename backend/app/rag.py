@@ -24,6 +24,7 @@ import multiprocessing
 from fastapi import HTTPException
 import time
 from datetime import datetime
+from typing import List, Optional
 
 # At the top of your file, after imports
 os.environ['TIKTOKEN_CACHE_DIR'] = '/app/tiktoken'
@@ -167,47 +168,84 @@ class RAG:
 
     async def _process_request(self, question: str, session_id: str):
         try:
-            # Get or create session-specific memory
-            if session_id not in self.memory_pools:
-                self.memory_pools[session_id] = ConversationBufferMemory(
-                    memory_key="chat_history",
-                    return_messages=True,
-                    output_key="answer"
-                )
+            query_type = self._classify_query(question.lower())
+            project_name = self._extract_project_name(question)
+            
+            # Enhance search strategy based on query type
+            search_kwargs = {
+                "k": 20 if query_type == "overview" else 4,
+                "fetch_k": 40 if query_type == "overview" else 8,
+            }
+            
+            if project_name:
+                search_kwargs["filter"] = {
+                    "project": project_name,
+                    **({"chunk_type": "overview"} if query_type == "overview" else {}),
+                    **({"contains_" + query_type: True} if query_type in ["price", "location", "roi", "completion"] else {})
+                }
+            elif query_type == "overview":
+                search_kwargs["filter"] = {"chunk_type": "overview"}
 
-            # Update last access time
-            self.last_access[session_id] = time.time()
+            docs = self.vectordb.similarity_search(
+                question,
+                **search_kwargs
+            )
 
-            memory = self.memory_pools[session_id]
+            # Process and structure the context
+            context = self._structure_context(docs, query_type, project_name)
+            
+            # Use memory more effectively
+            memory = self.memory_pools.get(session_id)
+            if memory:
+                chat_history = memory.chat_memory.messages if hasattr(memory, 'chat_memory') else []
+                # Limit chat history to last 5 exchanges
+                if len(chat_history) > 10:
+                    chat_history = chat_history[-10:]
+            else:
+                chat_history = []
 
-            # Add query classification
-            is_overview_query = any(word in question.lower() 
-                                for word in ['overview', 'all projects', 'summary', 'list'])
-
-            # Create the chain with the session-specific memory
+            # Create the chain with enhanced context
             qa_chain = ConversationalRetrievalChain.from_llm(
                 llm=self.llm,
-                retriever=self.vectordb.as_retriever(
-                    search_type="mmr",
-                    search_kwargs={
-                        "k": 6 if is_overview_query else 4,  # Retrieve more docs for overviews
-                        "fetch_k": 12 if is_overview_query else 8,
-                        "lambda_mult": 0.7 if is_overview_query else 0.5  # Increase diversity for overviews
-                    }
-                ),
+                retriever=FakeRetriever(docs),
                 memory=memory,
-                combine_docs_chain_kwargs={"prompt": self.prompt_template},
+                combine_docs_chain_kwargs={
+                    "prompt": self.prompt_template,
+                    "document_prompt": self._get_document_prompt(query_type)
+                },
                 return_source_documents=True,
                 return_generated_question=True,
                 output_key="answer"
             )
 
-            result = await qa_chain.ainvoke({"question": question})
+            result = await qa_chain.ainvoke({
+                "question": question,
+                "chat_history": chat_history
+            })
             return result['answer']
 
         except Exception as e:
-            logger.error(f"Error in _process_request method: {str(e)}", exc_info=True)
+            logger.error(f"Error in _process_request: {str(e)}")
             raise
+
+    def _is_better_metadata(self, new_metadata: dict, existing_metadata: dict) -> bool:
+        """Compare metadata completeness"""
+        key_fields = ['location', 'price_sqft', 'roi', 'completion_year', 'type']
+        new_count = sum(1 for k in key_fields if new_metadata.get(k))
+        existing_count = sum(1 for k in key_fields if existing_metadata.get(k))
+        return new_count > existing_count
+
+    def _extract_project_name(self, query: str) -> Optional[str]:
+        """Extract project name from query by checking against document metadata"""
+        # Get all unique project names from metadata
+        docs = self.vectordb.similarity_search("", k=20)  # Get a sample of documents
+        project_names = {doc.metadata.get('project') for doc in docs if doc.metadata.get('project')}
+        
+        # Find matching project name in query
+        return next(
+            (p for p in project_names if p and p.lower() in query.lower()),
+            None
+        )
 
     async def query(self, question: str, session_id: str = None) -> str:
         async with self.request_semaphore:
@@ -302,35 +340,56 @@ class RAG:
             yield "An error occurred while processing your request."
 
     def add_texts(self, texts: list[str]):
-        # Create two types of chunks: detailed and overview
-        detail_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,
-            chunk_overlap=100,
-        )
+        # Create different types of chunks for different purposes
+        splitters = {
+            "overview": RecursiveCharacterTextSplitter(
+                chunk_size=2000,
+                chunk_overlap=200,
+                separators=["\n\n", "\n", ". ", " ", ""]
+            ),
+            "metadata": RecursiveCharacterTextSplitter(
+                chunk_size=500,
+                chunk_overlap=50,
+                separators=["\n---\n", "\n\n", "\n", ". "]
+            ),
+            "content": RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=100,
+                separators=["\n\n", "\n", ". ", " ", ""]
+            )
+        }
 
-        overview_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=2000,  # Larger chunks for overviews
-            chunk_overlap=200,
-        )
-
-        # Create overview chunks by combining project summaries
-        overview_text = "\n\n=== PROJECT OVERVIEW ===\n\n"
+        processed_chunks = []
         for text in texts:
-            if "project_summary" in text.lower():  # Or another identifier
-                overview_text += text + "\n\n"
+            # Determine text type
+            if "project_summary" in text.lower() or "overview" in text.lower():
+                chunks = splitters["overview"].split_text(text)
+                chunk_type = "overview"
+            elif text.startswith("---"):  # Frontmatter/metadata
+                chunks = splitters["metadata"].split_text(text)
+                chunk_type = "metadata"
+            else:
+                chunks = splitters["content"].split_text(text)
+                chunk_type = "content"
 
-        # Split both types of content
-        detail_chunks = detail_splitter.split_text('\n'.join(texts))
-        overview_chunks = overview_splitter.split_text(overview_text)
-
-        # Combine all chunks
-        all_chunks = overview_chunks + detail_chunks
+            # Extract metadata from text (especially from frontmatter)
+            metadata = self._extract_metadata(text)
+            
+            for chunk in chunks:
+                chunk_metadata = {
+                    **metadata,
+                    "chunk_type": chunk_type,
+                    "contains_price": bool(re.search(r'(?:price|cost|PKR|Rs\.?)\s*[\d,]+', chunk.lower())),
+                    "contains_location": bool(re.search(r'(?:located|location|address|in)\s+\w+', chunk.lower())),
+                    "contains_roi": bool(re.search(r'(?:ROI|return|yield)\s*[\d.]+%', chunk.lower())),
+                    "contains_completion": bool(re.search(r'(?:complete|completion|timeline)\s*\d{4}', chunk.lower())),
+                }
+                processed_chunks.append(Document(page_content=chunk, metadata=chunk_metadata))
 
         # Create and merge the new vectorstore
-        new_db = FAISS.from_texts(all_chunks, self.embeddings)
+        new_db = FAISS.from_documents(processed_chunks, self.embeddings)
         self.vectordb.merge_from(new_db)
         self.vectordb.save_local(Config.FAISS_INDEX_PATH)
-        print(f"Added {len(texts)} new documents to the FAISS index")
 
     async def cleanup_old_sessions(self):
         """Clean up old session memories"""
@@ -346,6 +405,36 @@ class RAG:
                 del self.memory_pools[session_id]
             if session_id in self.last_access:
                 del self.last_access[session_id]
+
+    def _structure_context(self, docs: List[Document], query_type: str, project_name: str) -> str:
+        """Structure context based on query type and available information"""
+        if query_type == "overview":
+            return self._structure_overview_context(docs)
+        else:
+            return self._structure_specific_context(docs, query_type, project_name)
+
+    def _get_document_prompt(self, query_type: str) -> PromptTemplate:
+        """Get appropriate document prompt based on query type"""
+        if query_type == "overview":
+            return PromptTemplate(
+                template="Project Information:\n{page_content}\n",
+                input_variables=["page_content"]
+            )
+        return PromptTemplate(
+            template="{page_content}\n",
+            input_variables=["page_content"]
+        )
+
+class FakeRetriever:
+    """Helper class to use pre-retrieved documents"""
+    def __init__(self, docs):
+        self.docs = docs
+    
+    async def aget_relevant_documents(self, _):
+        return self.docs
+    
+    def get_relevant_documents(self, _):
+        return self.docs
 
 # Create an instance of the RAG class
 rag_instance = RAG()
