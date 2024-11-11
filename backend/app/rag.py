@@ -41,9 +41,8 @@ class RAG:
             self.embeddings = OpenAIEmbeddings()
             self.vectordb = self._load_vectordb()
 
-            # Single, clear system message
-            self.system_message = """
-            You are an expert AI assistant for DAO Proptech, acting as a knowledgeable wealth manager and investment advisor. Your mission is to guide users through DAO Proptech's innovative real estate investment opportunities, using the provided DAO whitepapers, documents, and context to deliver insightful, engaging, and persuasive responses.
+            # Define system message once
+            self.system_message = """You are an expert AI assistant for DAO Proptech, acting as a knowledgeable wealth manager and investment advisor. Your mission is to guide users through DAO Proptech's innovative real estate investment opportunities, using the provided DAO whitepapers, documents, and context to deliver insightful, engaging, and persuasive responses.
 
             **Important Guidelines:**
 
@@ -93,20 +92,23 @@ class RAG:
                     - **Investment Metrics**
             17. **Natural Conversation Flow:** Ensure dialogue flows naturally, avoiding unnecessary repetition or redundant information.
 
-            **Remember**, your goal is to inform, excite, and guide potential investors toward confident decisions about DAO Proptech's offerings. Blend expertise with persuasion, maintaining a helpful, personable, and trustworthy demeanor.
-            """
+            **Remember**, your goal is to inform, excite, and guide potential investors toward confident decisions about DAO Proptech's offerings. Blend expertise with persuasion, maintaining a helpful, personable, and trustworthy demeanor."""
 
+            # Update ChatOpenAI initialization to use model_kwargs
             self.llm = ChatOpenAI(
                 temperature=0, 
-                model_name='gpt-4'
+                model_name='gpt-4o',
+                model_kwargs={"system_message": self.system_message}
             )
+            self.prompt_template = self._create_prompt_template()
 
-            # Remove redundant prompt template
-            # self.prompt_template = self._create_prompt_template()
+            # Remove the global memory since we're using per-session memory
+            # self.memory = ConversationBufferMemory(...)
 
+            # Initialize memory pools with a default TTL (e.g., 30 minutes)
             self.memory_pools = {}
+            self.memory_ttl = 1800  # 30 minutes in seconds
             self.last_access = {}
-            self.memory_ttl = 1800
 
             # CPU-bound task executor (70% of cores for CPU tasks)
             self.cpu_executor = ThreadPoolExecutor(
@@ -152,25 +154,63 @@ class RAG:
         else:
             raise FileNotFoundError(f"FAISS index not found at {Config.FAISS_INDEX_PATH}")
 
+    def _create_prompt_template(self):
+        # Simplified prompt template that focuses on the current context and question
+        template = """
+        Context: {context}
+
+        Current Conversation:
+        {chat_history}
+
+        Human: {question}
+
+        Assistant:"""
+        return PromptTemplate(template=template, input_variables=["context", "chat_history", "question"])
+
     async def _process_request(self, question: str, session_id: str):
         try:
             query_type = self._classify_query(question.lower())
             project_name = self._extract_project_name(question)
 
-            # Get relevant documents
-            docs = self.vectordb.similarity_search(
-                question,
-                k=4,
-                filter={"project": project_name} if project_name else None
-            )
+            if project_name:
+                # Get project overview first
+                overview_docs = self.vectordb.similarity_search(
+                    f"{project_name} overview",
+                    k=1,
+                    filter={"project": project_name, "subsection": "overview"}
+                )
 
-            # Create context from documents
-            context = "\n\n".join(doc.page_content for doc in docs)
+                # Get relevant subsection based on query type
+                subsection_filter = self._get_subsection_filter(query_type)
+                specific_docs = self.vectordb.similarity_search(
+                    question,
+                    k=2,
+                    filter={"project": project_name, "subsection": subsection_filter}
+                )
 
-            # Simple message structure
+                # Combine and structure the context
+                context = self._format_project_response(overview_docs + specific_docs)
+
+            else:
+                # Handle general queries
+                docs = self.vectordb.similarity_search(question, k=4)
+                context = self._format_general_response(docs)
+
+            # Create messages for the chat
             messages = [
                 SystemMessage(content=self.system_message),
-                HumanMessage(content=f"Context:\n{context}\n\nQuestion: {question}")
+                HumanMessage(content=f"""Based on the following detailed information, provide a comprehensive and well-structured response:
+
+                Context:
+                {context}
+
+                Question: {question}
+
+                Please ensure to:
+                1. Include all relevant project details
+                2. Format the response with clear sections and bullet points
+                3. Highlight key investment features and amenities
+                4. Include specific numbers and metrics where available""")
             ]
 
             response = await self.llm.apredict_messages(messages)
