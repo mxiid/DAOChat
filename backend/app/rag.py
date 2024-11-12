@@ -136,12 +136,21 @@ class RAG:
 
             **Remember**, your goal is to inform, excite, and guide potential investors toward confident decisions about DAO Proptech's offerings. Blend expertise with persuasion, maintaining a helpful, personable, and trustworthy demeanor."""
 
-            # Update ChatOpenAI initialization to use model_kwargs
+            # Initialize both regular and streaming LLMs
             self.llm = ChatOpenAI(
                 temperature=0, 
                 model_name='gpt-4o-mini',
                 model_kwargs={"system_message": self.system_message}
             )
+            
+            # Initialize streaming version
+            self.streaming_llm = ChatOpenAI(
+                temperature=0,
+                model_name='gpt-4o-mini',
+                streaming=True,
+                model_kwargs={"system_message": self.system_message}
+            )
+            
             self.prompt_template = self._create_prompt_template()
 
             # Remove the global memory since we're using per-session memory
@@ -361,6 +370,8 @@ class RAG:
     async def stream_query(self, question: str, session_id: str):
         try:
             callback = AsyncIteratorCallbackHandler()
+            # Use the existing streaming LLM instance but with the callback
+            self.streaming_llm.callbacks = [callback]
             
             # 1. Smart document retrieval based on query type
             query_type = self._classify_query(question.lower())
@@ -390,7 +401,7 @@ class RAG:
                 HumanMessage(content=f"Question: {question}\n\nRelevant Information:\n{context}")
             ]
 
-            async for chunk in streaming_llm.astream(messages):
+            async for chunk in self.streaming_llm.astream(messages):
                 if hasattr(chunk, 'content'):
                     yield chunk.content
 
