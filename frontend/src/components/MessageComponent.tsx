@@ -5,7 +5,6 @@ import { useRef } from 'react'
 import { UserIcon } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import AnimatedLogo from './AnimatedLogo'
 
 interface Message {
   role: 'user' | 'bot';
@@ -31,36 +30,36 @@ const MessageComponent: React.FC<{
           className={`prose prose-sm max-w-none break-words ${isDarkMode ? "prose-invert" : ""}`}
           components={{
             p: ({ node, ...props }) => (
-              <p {...props} className={`mb-2 text-sm sm:text-base ${isDarkMode ? "text-white" : "text-black"}`} />
+              <p {...props} className={`mb-4 text-sm sm:text-base ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             a: ({ node, ...props }) => (
               <a {...props} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer" />
             ),
             ul: ({ node, ...props }) => (
-              <ul {...props} className="list-disc ml-4 space-y-2 mb-2" />
+              <ul {...props} className="list-disc pl-5 mb-4 space-y-2" />
             ),
             ol: ({ node, ...props }) => (
-              <ol {...props} className="list-decimal ml-4 space-y-2 mb-2" />
+              <ol {...props} className="list-decimal pl-5 mb-4 space-y-2" />
             ),
             li: ({ node, ...props }) => (
-              <li {...props} className={`${isDarkMode ? "text-white" : "text-black"}`} />
+              <li {...props} className={`text-sm sm:text-base ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             strong: ({ node, ...props }) => (
               <strong {...props} className={`font-bold ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             h1: ({ node, ...props }) => (
-              <h1 {...props} className={`text-xl font-bold mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
+              <h1 {...props} className={`text-2xl font-bold mb-4 mt-6 ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             h2: ({ node, ...props }) => (
-              <h2 {...props} className={`text-lg font-bold mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
+              <h2 {...props} className={`text-xl font-semibold mb-3 mt-5 ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             h3: ({ node, ...props }) => (
-              <h3 {...props} className={`text-base font-bold mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
+              <h3 {...props} className={`text-lg font-medium mb-2 mt-4 ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             code: ({ node, className, children, ...props }) => {
               const match = /language-(\w+)/.exec(className || "")
               return match ? (
-                <pre className={`bg-gray-100 rounded p-2 mb-2 overflow-x-auto ${isDarkMode ? "bg-gray-800" : ""}`}>
+                <pre className={`bg-gray-100 rounded p-2 mb-4 overflow-x-auto ${isDarkMode ? "bg-gray-800" : ""}`}>
                   <code className={`language-${match[1]}`} {...props}>
                     {children}
                   </code>
@@ -74,6 +73,21 @@ const MessageComponent: React.FC<{
                 </code>
               )
             },
+            table: ({ node, ...props }) => (
+              <div className="overflow-x-auto mb-4">
+                <table {...props} className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" />
+              </div>
+            ),
+            thead: ({ node, ...props }) => <thead {...props} className="bg-gray-50 dark:bg-gray-800" />,
+            th: ({ node, ...props }) => (
+              <th
+                {...props}
+                className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-300"
+              />
+            ),
+            td: ({ node, ...props }) => (
+              <td {...props} className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" />
+            ),
           }}
         >
           {message.content}
@@ -86,15 +100,11 @@ const MessageComponent: React.FC<{
     <div className={`flex items-start mb-4 ${message.role === "user" ? "justify-end" : ""}`}>
       {message.role === "bot" && (
         <div className="w-6 h-6 mr-2 flex-shrink-0 mt-1">
-          {isStreaming ? (
-            <AnimatedLogo thinking={false} />
-          ) : (
-            <img 
-              src="/emblem.svg" 
-              alt="DAO PropTech Emblem" 
-              className={`w-full h-full ${isDarkMode ? 'invert' : ''}`}
-            />
-          )}
+          <img 
+            src="/emblem.svg" 
+            alt="DAO PropTech Emblem" 
+            className={`w-full h-full ${isDarkMode ? 'invert' : ''}`}
+          />
         </div>
       )}
       <div

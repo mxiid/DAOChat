@@ -158,6 +158,23 @@ const ThinkingIndicator = ({ state, isDarkMode }: { state: 'thinking' | 'streami
   );
 };
 
+// Add custom scrollbar styles at the top of the file
+const scrollbarStyles = `
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.5);
+    border-radius: 20px;
+    border: transparent;
+  }
+`;
+
 export default function ChatbotPage() {
   const { isDarkMode, toggleTheme } = useTheme()
   const { messages, input, setInput, botState, streamingMessage, handleSendMessage } = useChatbot()
@@ -183,6 +200,9 @@ export default function ChatbotPage() {
 
   return (
     <div className={`flex flex-col min-h-[100dvh] ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-black'}`}>
+      {/* Add style tag for scrollbar */}
+      <style>{scrollbarStyles}</style>
+      
       <header className={`${isDarkMode ? 'bg-gray-900' : 'bg-white'} backdrop-blur-sm p-4 font-bold flex items-center justify-between sticky top-0 z-50`}>
         <div className="flex items-center">
           <img 
@@ -235,7 +255,7 @@ export default function ChatbotPage() {
             </div>
           </div>
         ) : (
-          <ScrollArea className="flex-1" ref={scrollAreaRef}>
+          <ScrollArea className="flex-1 custom-scrollbar" ref={scrollAreaRef}>
             <div className="px-4 py-2 max-w-3xl mx-auto">
               {messages.map((message, index) => (
                 <MessageComponent 
