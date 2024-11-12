@@ -139,7 +139,7 @@ class RAG:
             # Update ChatOpenAI initialization to use model_kwargs
             self.llm = ChatOpenAI(
                 temperature=0, 
-                model_name='gpt-4o',
+                model_name='gpt-4o-mini',
                 model_kwargs={"system_message": self.system_message}
             )
             self.prompt_template = self._create_prompt_template()
@@ -361,56 +361,44 @@ class RAG:
     async def stream_query(self, question: str, session_id: str):
         try:
             callback = AsyncIteratorCallbackHandler()
-            streaming_llm = ChatOpenAI(
-                streaming=True,
-                callbacks=[callback],
-                temperature=0,
-                model_name='gpt-4o'
-            )
-
-            # Get relevant documents first
-            docs = self.vectordb.similarity_search(
-                question,
-                k=4,
-            )
-            context = "\n\n".join(doc.page_content for doc in docs)
-
-            # Get or create session-specific memory
-            if session_id not in self.memory_pools:
-                self.memory_pools[session_id] = ConversationBufferMemory(
-                    memory_key="chat_history",
-                    return_messages=True,
-                    output_key="answer"
+            
+            # 1. Smart document retrieval based on query type
+            query_type = self._classify_query(question.lower())
+            project_name = self._extract_project_name(question)
+            
+            if project_name:
+                # Get focused documents based on query type
+                docs = self.vectordb.similarity_search(
+                    question,
+                    k=4,
+                    filter={"project": project_name, "subsection": self._get_subsection_filter(query_type)}
                 )
+            else:
+                docs = self.vectordb.similarity_search(question, k=4)
 
-            memory = self.memory_pools[session_id]
-            chat_history = memory.chat_memory.messages if hasattr(memory, 'chat_memory') else []
+            # 2. Structured context formatting
+            context = self._format_relevant_context(docs, query_type)
 
-            # Format the prompt with context
-            formatted_prompt = self.prompt_template.format(
-                context=context,
-                chat_history=chat_history,
-                question=question
-            )
+            # 3. Efficient memory management
+            memory = self._get_or_create_memory(session_id)
+            chat_history = self._get_recent_chat_history(memory, max_turns=3)
 
-            # Create messages for the chat, including system message
+            # 4. Optimized prompt structure
             messages = [
                 SystemMessage(content=self.system_message),
-                HumanMessage(content=formatted_prompt)
+                *chat_history,  # Include recent chat history
+                HumanMessage(content=f"Question: {question}\n\nRelevant Information:\n{context}")
             ]
 
-            # Stream the response
             async for chunk in streaming_llm.astream(messages):
                 if hasattr(chunk, 'content'):
                     yield chunk.content
 
-            # Update memory after completion
-            if hasattr(memory, 'chat_memory'):
-                memory.chat_memory.add_user_message(question)
-                memory.chat_memory.add_ai_message(formatted_prompt)
+            # 5. Efficient memory update
+            self._update_memory(memory, question, context)
 
         except Exception as e:
-            logger.error(f"Error in stream_query: {str(e)}", exc_info=True)
+            logger.error(f"Error in stream_query: {str(e)}")
             yield "An error occurred while processing your request."
 
     def add_texts(self, texts: list[str]):
@@ -558,6 +546,97 @@ class RAG:
         elif any(word in query for word in ['complete', 'finish', 'when']):
             return "completion"
         return "general"
+
+    def _format_relevant_context(self, docs: List[Document], query_type: str) -> str:
+        """Format context to include only relevant information based on query type"""
+        formatted_content = []
+        
+        for doc in docs:
+            content = doc.page_content
+            metadata = doc.metadata
+            
+            # Extract only relevant sections based on query type
+            if query_type == "price":
+                price_pattern = r'(?:Token Price|Price|Investment Metrics):.*?(?=\n\n|\Z)'
+                matches = re.findall(price_pattern, content, re.DOTALL)
+                if matches:
+                    formatted_content.extend(matches)
+                    
+            elif query_type == "location":
+                location_pattern = r'Location:.*?(?=\n\n|\Z)'
+                matches = re.findall(location_pattern, content, re.DOTALL)
+                if matches:
+                    formatted_content.extend(matches)
+                    
+            elif query_type == "roi":
+                roi_pattern = r'(?:ROI Figures|Projected ROI|Rental Yield):.*?(?=\n\n|\Z)'
+                matches = re.findall(roi_pattern, content, re.DOTALL)
+                if matches:
+                    formatted_content.extend(matches)
+                    
+            else:
+                # For general queries, include key information but skip lengthy descriptions
+                key_info = f"Project: {metadata.get('project', 'Unknown')}\n"
+                key_info += f"Type: {metadata.get('project_type', 'Unknown')}\n"
+                key_info += f"Location: {metadata.get('location', 'Unknown')}\n"
+                formatted_content.append(key_info)
+        
+        return "\n\n".join(formatted_content)
+
+    def _get_or_create_memory(self, session_id: str) -> ConversationBufferMemory:
+        """Get or create memory with token management"""
+        if session_id not in self.memory_pools:
+            self.memory_pools[session_id] = ConversationBufferMemory(
+                memory_key="chat_history",
+                return_messages=True,
+                output_key="answer"
+            )
+        
+        # Cleanup old messages if needed
+        memory = self.memory_pools[session_id]
+        self._cleanup_old_messages(memory)
+        return memory
+
+    def _cleanup_old_messages(self, memory: ConversationBufferMemory):
+        """Clean up old messages while keeping conversation coherent"""
+        if hasattr(memory, 'chat_memory'):
+            messages = memory.chat_memory.messages
+            if len(messages) > 6:  # Keep last 3 turns (6 messages)
+                # Keep the first system message if it exists
+                system_messages = [m for m in messages[:1] if isinstance(m, SystemMessage)]
+                recent_messages = messages[-6:]
+                memory.chat_memory.messages = system_messages + recent_messages
+
+    def _get_recent_chat_history(self, memory: ConversationBufferMemory, max_turns: int = 3) -> List:
+        """Get recent chat history with smart filtering"""
+        if not hasattr(memory, 'chat_memory'):
+            return []
+        
+        messages = memory.chat_memory.messages
+        # Filter out system messages from the count
+        chat_messages = [m for m in messages if not isinstance(m, SystemMessage)]
+        recent_messages = chat_messages[-max_turns*2:] if chat_messages else []
+        
+        return recent_messages
+
+    def _update_memory(self, memory: ConversationBufferMemory, question: str, context: str):
+        """Update memory efficiently"""
+        if hasattr(memory, 'chat_memory'):
+            memory.chat_memory.add_user_message(question)
+            
+            # Store a summarized version of the context
+            summary = self._summarize_context(context)
+            memory.chat_memory.add_ai_message(summary)
+
+    def _summarize_context(self, context: str) -> str:
+        """Create a concise summary of the context"""
+        # Extract key points only
+        key_points = []
+        for line in context.split('\n'):
+            if any(key in line.lower() for key in ['price:', 'roi:', 'location:', 'project:', 'type:']):
+                key_points.append(line.strip())
+        
+        return '\n'.join(key_points)
 
 class FakeRetriever:
     """Helper class to use pre-retrieved documents"""
