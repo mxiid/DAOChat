@@ -26,24 +26,22 @@ from .config import Config
 # Setup logging
 logger = logging.getLogger(__name__)
 
-# Async LRU Cache
-from async_lru import alru_cache
+# Tiktoken
+import tiktoken
 
 # FastAPI
 from fastapi import HTTPException
 
-# Tiktoken
-import tiktoken
-
 # OpenAI
-from openai.error import APIError
+from openai import OpenAIError, APIError, RateLimitError
 
 class RAG:
-    def __init__(self, model_name: str = 'gpt-4o', memory_ttl: int = 1800):
+    def __init__(self, model_name: str = 'gpt-4o-mini', memory_ttl: int = 1800):
         try:
-            # Initialize tokenizer
+            # Initialize tokenizer with updated limits for gpt-4o-mini
             self.tokenizer = tiktoken.get_encoding("cl100k_base")
-            self.max_tokens = 4096  # Safe limit for context
+            self.max_context_tokens = 128000  # 128K context window
+            self.max_output_tokens = 16000    # 16K output tokens
 
             # Define system message
             self.system_message = """You are DAO Proptech's expert AI investment advisor, specializing in real estate investment opportunities. You combine the precision of a wealth manager with the warmth of a trusted advisor.
@@ -100,13 +98,13 @@ class RAG:
             self.embeddings = OpenAIEmbeddings()
             self.vectordb = self._load_vectordb()
 
-            # Initialize LLMs with proper configurations
+            # Initialize LLMs with proper configurations for gpt-4o-mini
             self.streaming_llm = ChatOpenAI(
                 temperature=0,
                 model_name=model_name,
                 streaming=True,
-                max_tokens=2048,
-                request_timeout=30
+                max_tokens=self.max_output_tokens,  # Allow for maximum output
+                request_timeout=60  # Increased timeout for larger responses
             )
 
             # Session management
@@ -277,7 +275,7 @@ class RAG:
                 memory = self._get_or_create_memory(session_id)
                 self.last_access[session_id] = datetime.now().timestamp()
 
-                # Get relevant documents
+                # Get relevant documents - increased k due to larger context window
                 query_type = self._classify_query(question.lower())
                 project_name = self._extract_project_name(question)
                 docs = await self._get_relevant_documents(question, query_type, project_name)
@@ -287,22 +285,32 @@ class RAG:
                     f"- {doc.page_content}" for doc in docs
                 )
 
-                # Setup streaming callback
-                callback = AsyncIteratorCallbackHandler()
-                self.streaming_llm.callbacks = [callback]
+                # Include more conversation history due to larger context window
+                chat_history = memory.chat_memory.messages[-10:]  # Increased from 4 to 10
 
-                # Prepare messages with efficient history management
+                # Calculate token usage
+                system_tokens = len(self.tokenizer.encode(self.system_message))
+                context_tokens = len(self.tokenizer.encode(context))
+                question_tokens = len(self.tokenizer.encode(question))
+                history_tokens = sum(len(self.tokenizer.encode(str(m.content))) for m in chat_history)
+
+                # Ensure we stay within context window
+                total_tokens = system_tokens + context_tokens + question_tokens + history_tokens
+                if total_tokens > self.max_context_tokens * 0.9:  # Leave 10% buffer
+                    # Truncate context if needed while preserving essential information
+                    max_context_tokens = int(self.max_context_tokens * 0.6)  # Allow 60% for context
+                    context = self._truncate_text(context, max_context_tokens)
+
+                # Prepare messages
                 messages = [
                     SystemMessage(content=self.system_message),
-                    *memory.chat_memory.messages[-4:],  # Keep last 2 turns
-                    HumanMessage(
-                        content=f"""Based on this context:
-                        {context}
+                    *chat_history,
+                    HumanMessage(content=f"""Based on this context:
+{context}
 
-                        Question: {question}
+Question: {question}
 
-                        Please provide a clear, specific answer focusing on the relevant details."""
-                    )
+Please provide a clear, specific answer focusing on the relevant details.""")
                 ]
 
                 # Stream response with error handling
@@ -312,10 +320,15 @@ class RAG:
                         if hasattr(chunk, 'content') and chunk.content:
                             collected_response.append(chunk.content)
                             yield chunk.content
+                except RateLimitError:
+                    logger.error("Rate limit exceeded")
+                    yield "\nI apologize, but we've hit our rate limit. Please try again in a moment."
+                except APIError as e:
+                    logger.error(f"OpenAI API error: {str(e)}")
+                    yield "\nI apologize, but I encountered an API error while generating the response."
                 except Exception as e:
                     logger.error(f"Streaming error: {str(e)}")
                     yield "\nI apologize, but I encountered an error while generating the response."
-                    return
 
                 # Update memory with complete response
                 if collected_response:
