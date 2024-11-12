@@ -140,7 +140,11 @@ class RAG:
             self.llm = ChatOpenAI(
                 temperature=0, 
                 model_name='gpt-4o-mini',
-                model_kwargs={"system_message": self.system_message}
+                model_kwargs={
+                    "messages": [
+                        {"role": "system", "content": self.system_message}
+                    ]
+                }
             )
             
             # Initialize streaming version
@@ -148,7 +152,11 @@ class RAG:
                 temperature=0,
                 model_name='gpt-4o-mini',
                 streaming=True,
-                model_kwargs={"system_message": self.system_message}
+                model_kwargs={
+                    "messages": [
+                        {"role": "system", "content": self.system_message}
+                    ]
+                }
             )
             
             self.prompt_template = self._create_prompt_template()
