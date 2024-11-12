@@ -20,6 +20,12 @@ from typing import List, Optional, AsyncGenerator
 import re
 from datetime import datetime
 
+# OpenAI
+from openai import OpenAIError, APIError, RateLimitError
+
+# Async LRU Cache
+from async_lru import alru_cache
+
 # Configuration
 from .config import Config
 
@@ -31,9 +37,6 @@ import tiktoken
 
 # FastAPI
 from fastapi import HTTPException
-
-# OpenAI
-from openai import OpenAIError, APIError, RateLimitError
 
 class RAG:
     def __init__(self, model_name: str = 'gpt-4o-mini', memory_ttl: int = 1800):
