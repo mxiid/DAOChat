@@ -448,28 +448,27 @@ Please provide a clear, specific answer focusing on the relevant details.""")
     async def _get_relevant_documents(self, question: str, query_type: str, project_name: Optional[str] = None) -> List[Document]:
         """Get relevant documents with caching"""
         try:
+            logger.info(f"Searching for: Project={project_name}, Query={question}")
+            
             if project_name:
-                # Get project overview
-                overview_docs = self.vectordb.similarity_search(
-                    f"{project_name} overview",
-                    k=1,
-                    filter={"project": project_name, "subsection": "overview"}
-                )
-
-                # Get specific information
-                subsection_filter = self._get_subsection_filter(query_type)
-                specific_docs = self.vectordb.similarity_search(
+                # Simple similarity search for the specific project
+                docs = self.vectordb.similarity_search(
                     question,
-                    k=2,
-                    filter={"project": project_name, "subsection": subsection_filter}
+                    k=4,  # Get top 4 results
                 )
-
-                return overview_docs + specific_docs
+                logger.info(f"Found {len(docs)} documents for {project_name}")
+                return docs
             else:
-                return self.vectordb.similarity_search(question, k=4)
+                # General search
+                docs = self.vectordb.similarity_search(
+                    question,
+                    k=4
+                )
+                logger.info(f"Found {len(docs)} documents for general query")
+                return docs
 
         except Exception as e:
-            logger.error(f"Error retrieving documents: {str(e)}")
+            logger.error(f"Error retrieving documents: {str(e)}", exc_info=True)
             return []
 
 # Create an instance of the RAG class
