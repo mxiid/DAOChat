@@ -76,6 +76,16 @@ class RAG:
             - 100+ seats, modern workspace
             - Token: PKR 27,500/sq.ft., 8,200 sq.ft.
 
+            6. Qube 101 (Divine Gardens, Lahore)
+            - Co-working | Completed 2022 | ROI: 5% rental yield
+            - 100+ seats, modern workspace
+            - Token: PKR 28,000/sq.ft., 10,000 sq.ft.
+
+            7. Amna Homes (Sector D1, DHA Bahawalpur)
+            - Residential | Completed 2027 | ROI: 2% rental yield
+            - 333 villas, premium amenities
+            - Token: PKR 9,200/sq.ft., 1,000 sq.ft.
+
             **Core Guidelines:**
 
             1. **Knowledge Base:** Use provided project details and general real estate knowledge only
