@@ -454,11 +454,17 @@ Please provide a clear, specific answer focusing on the relevant details.""")
 
     def _get_or_create_memory(self, session_id: str) -> ConversationBufferMemory:
         """Get or create a conversation memory for a session"""
-        if session_id not in self.memory_pools or session_id not in self.active_sessions:
-            logger.warning(f"Invalid session ID: {session_id}. Creating new session.")
-            session_id = self.create_session()
+        logger.info(f"Accessing memory for session: {session_id}")
+        logger.info(f"Current active sessions: {list(self.memory_pools.keys())}")
         
-        self.last_access[session_id] = datetime.now().timestamp()
+        if session_id not in self.memory_pools:
+            logger.info(f"Creating new memory for session: {session_id}")
+            self.memory_pools[session_id] = ConversationBufferMemory(
+                memory_key="chat_history",
+                return_messages=True,
+                output_key="answer"
+            )
+            self.last_access[session_id] = datetime.now().timestamp()
         return self.memory_pools[session_id]
 
     async def _get_relevant_documents(self, question: str, query_type: str, project_name: Optional[str] = None) -> List[Document]:
