@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from 'react'
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { ScrollArea } from "./ui/scroll-area"
@@ -12,6 +12,10 @@ import MessageComponent from './MessageComponent'
 interface Message {
   role: 'user' | 'bot';
   content: string;
+}
+
+interface ChatSession {
+  sessionId: string | null;
 }
 
 const staticSuggestedQuestions = [
@@ -52,13 +56,35 @@ const useTheme = () => {
 }
 
 const useChatbot = () => {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [input, setInput] = useState('')
-  const [botState, setBotState] = useState<'idle' | 'thinking' | 'streaming'>('idle')
-  const [streamingMessage, setStreamingMessage] = useState('')
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [botState, setBotState] = useState<'idle' | 'thinking' | 'streaming'>('idle');
+  const [streamingMessage, setStreamingMessage] = useState('');
+  const [session, setSession] = useState<ChatSession>({ sessionId: null });
+
+  const initializeSession = useCallback(async () => {
+    try {
+      const response = await fetch('/api/session', {
+        method: 'POST',
+      });
+      
+      if (!response.ok) throw new Error('Failed to create session');
+      
+      const data = await response.json();
+      setSession({ sessionId: data.session_id });
+    } catch (error) {
+      console.error('Error creating session:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!session.sessionId) {
+      initializeSession();
+    }
+  }, [initializeSession]);
 
   const handleSendMessage = useCallback(async (message: string) => {
-    if (message.trim() === '' || botState !== 'idle') return;
+    if (message.trim() === '' || botState !== 'idle' || !session.sessionId) return;
 
     const newUserMessage: Message = { role: 'user', content: message.trim() };
     setMessages(prev => [...prev, newUserMessage]);
@@ -71,11 +97,18 @@ const useChatbot = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Session-ID': session.sessionId
         },
         body: JSON.stringify({ text: message }),
       });
 
-      if (!response.ok) throw new Error('Stream response was not ok');
+      if (!response.ok) {
+        if (response.status === 401) {
+          await initializeSession();
+          throw new Error('Session expired. Please try again.');
+        }
+        throw new Error('Stream response was not ok');
+      }
       
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No reader available');
@@ -120,9 +153,35 @@ const useChatbot = () => {
       setBotState('idle');
       setStreamingMessage('');
     }
-  }, [botState]);
+  }, [botState, session.sessionId, initializeSession]);
 
-  return { messages, input, setInput, botState, streamingMessage, handleSendMessage }
+  const cleanup = useCallback(async () => {
+    if (session.sessionId) {
+      try {
+        await fetch(`/api/session/${session.sessionId}`, {
+          method: 'DELETE',
+        });
+      } catch (error) {
+        console.error('Error cleaning up session:', error);
+      }
+    }
+  }, [session.sessionId]);
+
+  useEffect(() => {
+    return () => {
+      cleanup();
+    };
+  }, [cleanup]);
+
+  return { 
+    messages, 
+    input, 
+    setInput, 
+    botState, 
+    streamingMessage, 
+    handleSendMessage,
+    sessionReady: !!session.sessionId 
+  };
 }
 
 const GeometricShapes = () => (
@@ -177,7 +236,15 @@ const scrollbarStyles = `
 
 export default function ChatbotPage() {
   const { isDarkMode, toggleTheme } = useTheme()
-  const { messages, input, setInput, botState, streamingMessage, handleSendMessage } = useChatbot()
+  const { 
+    messages, 
+    input, 
+    setInput, 
+    botState, 
+    streamingMessage, 
+    handleSendMessage,
+    sessionReady 
+  } = useChatbot()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
 
@@ -289,18 +356,18 @@ export default function ChatbotPage() {
                 value={input}
                 onChange={handleInputChange}
                 onKeyPress={handleKeyPress}
-                placeholder={messages.length === 0 ? "Ask me anything about real estate investments..." : "Type your message..."}
+                placeholder={!sessionReady ? "Initializing chat..." : messages.length === 0 ? "Ask me anything about real estate investments..." : "Type your message..."}
                 className={`flex-grow rounded-l-full border-0 focus:ring-0 ${
                   isDarkMode ? 'bg-gray-800 text-white placeholder-gray-400' : 'bg-white text-gray-800 placeholder-gray-500'
                 }`}
-                disabled={botState !== 'idle'}
+                disabled={botState !== 'idle' || !sessionReady}
               />
               <Button
                 onClick={() => handleSendMessage(input)}
                 className={`rounded-r-full ${
-                  botState !== 'idle' ? 'bg-gray-500' : 'bg-[#ADFF2F] hover:bg-[#9ACD32]'
+                  botState !== 'idle' || !sessionReady ? 'bg-gray-500' : 'bg-[#ADFF2F] hover:bg-[#9ACD32]'
                 } text-black`}
-                disabled={botState !== 'idle' || !input.trim()}
+                disabled={botState !== 'idle' || !input.trim() || !sessionReady}
               >
                 {botState !== 'idle' ? <Loader2Icon className="w-4 h-4 animate-spin" /> : <SendIcon className="w-4 h-4" />}
               </Button>

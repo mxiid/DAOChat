@@ -19,6 +19,7 @@ import asyncio
 from typing import List, Optional, AsyncGenerator
 import re
 from datetime import datetime
+import uuid
 
 # OpenAI
 from openai import OpenAIError, APIError, RateLimitError
@@ -130,6 +131,9 @@ class RAG:
 
             # Start cleanup task
             self.cleanup_task = asyncio.create_task(self._run_periodic_cleanup())
+
+            # Add session tracking
+            self.active_sessions = set()
 
         except Exception as e:
             logger.exception("Error initializing RAG")
@@ -281,7 +285,12 @@ class RAG:
             raise
 
     async def stream_query(self, question: str, session_id: str):
-        """Process and stream responses with proper context management"""
+        """Process and stream responses with proper session management"""
+        if session_id not in self.active_sessions:
+            logger.warning(f"Invalid session ID: {session_id}")
+            yield "Session expired. Please start a new conversation."
+            return
+
         async with self.request_semaphore:
             try:
                 # Get or create memory
@@ -368,9 +377,9 @@ Please provide a clear, specific answer focusing on the relevant details.""")
         current_time = datetime.now().timestamp()
         sessions_to_remove = []
 
-        async with self.request_semaphore:  # Prevent conflicts with active requests
-            for session_id, last_access in self.last_access.items():
-                if current_time - last_access > self.memory_ttl:
+        async with self.request_semaphore:
+            for session_id in self.active_sessions.copy():
+                if current_time - self.last_access.get(session_id, 0) > self.memory_ttl:
                     sessions_to_remove.append(session_id)
 
             for session_id in sessions_to_remove:
@@ -380,10 +389,10 @@ Please provide a clear, specific answer focusing on the relevant details.""")
     async def _remove_session(self, session_id: str):
         """Safely remove a session and its associated data"""
         try:
-            if session_id in self.memory_pools:
-                del self.memory_pools[session_id]
-            if session_id in self.last_access:
-                del self.last_access[session_id]
+            self.active_sessions.discard(session_id)
+            self.memory_pools.pop(session_id, None)
+            self.last_access.pop(session_id, None)
+            logger.info(f"Removed session: {session_id}")
         except Exception as e:
             logger.error(f"Error removing session {session_id}: {str(e)}")
 
@@ -445,16 +454,13 @@ Please provide a clear, specific answer focusing on the relevant details.""")
 
     def _get_or_create_memory(self, session_id: str) -> ConversationBufferMemory:
         """Get or create a conversation memory for a session"""
-        if session_id not in self.memory_pools:
-            self.memory_pools[session_id] = ConversationBufferMemory(
-                memory_key="chat_history",
-                return_messages=True,
-                output_key="answer"
-            )
-            self.last_access[session_id] = datetime.now().timestamp()
+        if session_id not in self.memory_pools or session_id not in self.active_sessions:
+            logger.warning(f"Invalid session ID: {session_id}. Creating new session.")
+            session_id = self.create_session()
+        
+        self.last_access[session_id] = datetime.now().timestamp()
         return self.memory_pools[session_id]
 
-    @alru_cache(maxsize=100)
     async def _get_relevant_documents(self, question: str, query_type: str, project_name: Optional[str] = None) -> List[Document]:
         """Get relevant documents with caching"""
         try:
@@ -481,11 +487,33 @@ Please provide a clear, specific answer focusing on the relevant details.""")
             logger.error(f"Error retrieving documents: {str(e)}", exc_info=True)
             return []
 
+    async def create_session(self) -> str:
+        """Create a new session and return its ID"""
+        session_id = str(uuid.uuid4())
+        self.active_sessions.add(session_id)
+        self.memory_pools[session_id] = ConversationBufferMemory(
+            memory_key="chat_history",
+            return_messages=True,
+            output_key="answer"
+        )
+        self.last_access[session_id] = datetime.now().timestamp()
+        logger.info(f"Created new session: {session_id}")
+        return session_id
+
 # Create an instance of the RAG class
 rag_instance = RAG()
 
 # Define the functions to be used in routes
+async def create_chat_session() -> str:
+    """Create a new chat session"""
+    return await rag_instance.create_session()
+
 async def ask_question(question: str, session_id: str):
+    """Handle questions with session validation"""
+    if session_id not in rag_instance.active_sessions:
+        yield "Session expired. Please start a new conversation."
+        return
+        
     async for chunk in rag_instance.stream_query(question, session_id):
         yield chunk
 
