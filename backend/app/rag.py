@@ -297,43 +297,33 @@ class RAG:
                 memory = self._get_or_create_memory(session_id)
                 self.last_access[session_id] = datetime.now().timestamp()
 
-                # Get relevant documents - increased k due to larger context window
-                query_type = self._classify_query(question.lower())
-                project_name = self._extract_project_name(question)
-                docs = await self._get_relevant_documents(question, query_type, project_name)
+                # For very short queries, we'll use a simplified context
+                if len(question.split()) <= 1:
+                    messages = [
+                        SystemMessage(content=self.system_message),
+                        *memory.chat_memory.messages[-10:],  # Include conversation history
+                        HumanMessage(content=question)
+                    ]
+                else:
+                    # Regular query processing with full context
+                    query_type = self._classify_query(question.lower())
+                    project_name = self._extract_project_name(question)
+                    docs = await self._get_relevant_documents(question, query_type, project_name)
+                    
+                    context = self._format_project_response(docs) if project_name else "\n\n".join(
+                        f"- {doc.page_content}" for doc in docs
+                    )
 
-                # Format context efficiently
-                context = self._format_project_response(docs) if project_name else "\n\n".join(
-                    f"- {doc.page_content}" for doc in docs
-                )
-
-                # Include more conversation history due to larger context window
-                chat_history = memory.chat_memory.messages[-10:]  # Increased from 4 to 10
-
-                # Calculate token usage
-                system_tokens = len(self.tokenizer.encode(self.system_message))
-                context_tokens = len(self.tokenizer.encode(context))
-                question_tokens = len(self.tokenizer.encode(question))
-                history_tokens = sum(len(self.tokenizer.encode(str(m.content))) for m in chat_history)
-
-                # Ensure we stay within context window
-                total_tokens = system_tokens + context_tokens + question_tokens + history_tokens
-                if total_tokens > self.max_context_tokens * 0.9:  # Leave 10% buffer
-                    # Truncate context if needed while preserving essential information
-                    max_context_tokens = int(self.max_context_tokens * 0.6)  # Allow 60% for context
-                    context = self._truncate_text(context, max_context_tokens)
-
-                # Prepare messages
-                messages = [
-                    SystemMessage(content=self.system_message),
-                    *chat_history,
-                    HumanMessage(content=f"""Based on this context:
+                    messages = [
+                        SystemMessage(content=self.system_message),
+                        *memory.chat_memory.messages[-10:],
+                        HumanMessage(content=f"""Based on this context:
 {context}
 
 Question: {question}
 
 Please provide a clear, specific answer focusing on the relevant details.""")
-                ]
+                    ]
 
                 # Stream response with error handling
                 collected_response = []
@@ -342,21 +332,16 @@ Please provide a clear, specific answer focusing on the relevant details.""")
                         if hasattr(chunk, 'content') and chunk.content:
                             collected_response.append(chunk.content)
                             yield chunk.content
-                except RateLimitError:
-                    logger.error("Rate limit exceeded")
-                    yield "\nI apologize, but we've hit our rate limit. Please try again in a moment."
-                except APIError as e:
-                    logger.error(f"OpenAI API error: {str(e)}")
-                    yield "\nI apologize, but I encountered an API error while generating the response."
+                            
+                    # Update memory with complete response
+                    if collected_response:
+                        full_response = ''.join(collected_response)
+                        memory.chat_memory.add_user_message(question)
+                        memory.chat_memory.add_ai_message(full_response)
+                        
                 except Exception as e:
                     logger.error(f"Streaming error: {str(e)}")
                     yield "\nI apologize, but I encountered an error while generating the response."
-
-                # Update memory with complete response
-                if collected_response:
-                    full_response = ''.join(collected_response)
-                    memory.chat_memory.add_user_message(question)
-                    memory.chat_memory.add_ai_message(full_response)
 
             except Exception as e:
                 logger.exception("Error in stream_query")
