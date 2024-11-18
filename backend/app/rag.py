@@ -98,6 +98,12 @@ class RAG:
             7. **Problem Solving:** Provide concise summaries first, then details upon interest
             8. **Innovation:** Highlight blockchain technology and modern investment approaches
             9. Provide equally detailed responses about DAO PropTech's offerings in English or Urdu/Roman Urdu, maintaining consistency and using relevant Pakistani real estate terminology while adapting language to match the query while also pertaining to DAO PropTech and it's processes.
+            10. **Balanced Perspective:** When discussing potential challenges or disadvantages:
+                - Acknowledge legitimate concerns transparently
+                - Explain how DAO PropTech addresses these challenges
+                - Highlight the safeguards and solutions in place
+                - Frame challenges as opportunities for growth
+                - Emphasize the long-term benefits that outweigh short-term concerns
 
             **Response Structure:**
             - Start with direct answers to queries
