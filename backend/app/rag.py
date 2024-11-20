@@ -385,6 +385,16 @@ Please provide a clear, specific answer focusing on the relevant details.""")
 
             async with self.db_session() as session:
                 try:
+                    # Verify session exists
+                    chat_session = await session.execute(
+                        select(ChatSession).where(ChatSession.id == session_id)
+                    )
+                    chat_session = chat_session.scalar_one_or_none()
+                    
+                    if not chat_session:
+                        logger.error(f"Session {session_id} not found in database")
+                        raise ValueError("Invalid session ID")
+
                     # Create message objects
                     user_message = ChatMessage(
                         session_id=session_id,
@@ -403,6 +413,7 @@ Please provide a clear, specific answer focusing on the relevant details.""")
                     session.add(user_message)
                     session.add(bot_message)
                     await session.commit()
+                    
                 except Exception as e:
                     await session.rollback()
                     logger.error(f"Database error: {str(e)}")
@@ -542,15 +553,33 @@ Please provide a clear, specific answer focusing on the relevant details.""")
     async def create_session(self) -> str:
         """Create a new session and return its ID"""
         session_id = str(uuid.uuid4())
-        self.active_sessions.add(session_id)
-        self.memory_pools[session_id] = ConversationBufferMemory(
-            memory_key="chat_history",
-            return_messages=True,
-            output_key="answer"
-        )
-        self.last_access[session_id] = datetime.now().timestamp()
-        logger.info(f"Created new session: {session_id}")
-        return session_id
+        
+        # Create session in database first
+        async with self.db_session() as session:
+            try:
+                chat_session = ChatSession(
+                    id=session_id,
+                    created_at=datetime.utcnow()
+                )
+                session.add(chat_session)
+                await session.commit()
+                
+                # Then set up memory
+                self.active_sessions.add(session_id)
+                self.memory_pools[session_id] = ConversationBufferMemory(
+                    memory_key="chat_history",
+                    return_messages=True,
+                    output_key="answer"
+                )
+                self.last_access[session_id] = datetime.now().timestamp()
+                
+                logger.info(f"Created new session: {session_id}")
+                return session_id
+                
+            except Exception as e:
+                await session.rollback()
+                logger.error(f"Error creating session: {str(e)}")
+                raise
 
 # Create an instance of the RAG class with database session
 def get_rag_instance():

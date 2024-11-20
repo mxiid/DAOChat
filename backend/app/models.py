@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
 
@@ -10,6 +11,9 @@ class ChatSession(Base):
     user_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     session_metadata = Column(JSON, nullable=True)
+    
+    # Add relationship
+    messages = relationship("ChatMessage", back_populates="session")
 
 class ChatMessage(Base):
     __tablename__ = 'chat_messages'
@@ -21,4 +25,7 @@ class ChatMessage(Base):
     content = Column(String)
     tokens = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
-    message_metadata = Column(JSON, nullable=True) 
+    message_metadata = Column(JSON, nullable=True)
+    
+    # Add relationship
+    session = relationship("ChatSession", back_populates="messages") 
