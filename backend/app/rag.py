@@ -45,9 +45,15 @@ from .monitoring import ChatMonitoring
 # Models
 from .models import ChatMessage
 
+# Database
+from .database import SessionLocal
+
 class RAG:
-    def __init__(self, model_name: str = 'gpt-4o-mini', memory_ttl: int = 1800):
+    def __init__(self, model_name: str = 'gpt-4o-mini', memory_ttl: int = 1800, db_session=None):
         try:
+            # Add database session
+            self.db = db_session
+            
             # Initialize tokenizer with updated limits for gpt-4o-mini
             self.tokenizer = tiktoken.get_encoding("cl100k_base")
             self.max_context_tokens = 128000  # 128K context window
@@ -528,8 +534,9 @@ Please provide a clear, specific answer focusing on the relevant details.""")
         logger.info(f"Created new session: {session_id}")
         return session_id
 
-# Create an instance of the RAG class
-rag_instance = RAG()
+# Create an instance of the RAG class with database session
+db = SessionLocal()
+rag_instance = RAG(db_session=db)
 
 # Define the functions to be used in routes
 async def create_chat_session() -> str:
