@@ -39,6 +39,12 @@ import tiktoken
 # FastAPI
 from fastapi import HTTPException
 
+# Monitoring
+from .monitoring import ChatMonitoring
+
+# Models
+from .models import ChatMessage
+
 class RAG:
     def __init__(self, model_name: str = 'gpt-4o-mini', memory_ttl: int = 1800):
         try:
@@ -293,6 +299,7 @@ class RAG:
             logger.error(f"Error in generate_questions method: {str(e)}", exc_info=True)
             raise
 
+    @ChatMonitoring.track_request
     async def stream_query(self, question: str, session_id: str):
         """Process and stream responses with proper session management"""
         if session_id not in self.active_sessions:
@@ -347,6 +354,27 @@ Please provide a clear, specific answer focusing on the relevant details.""")
                         full_response = ''.join(collected_response)
                         memory.chat_memory.add_user_message(question)
                         memory.chat_memory.add_ai_message(full_response)
+
+                    # Store message in database
+                    await self.db.execute(
+                        ChatMessage(
+                            session_id=session_id,
+                            role='user',
+                            content=question,
+                            tokens=len(question.split())  # Simple approximation
+                        )
+                    )
+
+                    # Store bot response
+                    if collected_response:
+                        await self.db.execute(
+                            ChatMessage(
+                                session_id=session_id,
+                                role='bot',
+                                content=full_response,
+                                tokens=len(full_response.split())
+                            )
+                        )
 
                 except Exception as e:
                     logger.error(f"Streaming error: {str(e)}")
