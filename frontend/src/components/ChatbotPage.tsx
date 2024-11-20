@@ -22,7 +22,7 @@ const staticSuggestedQuestions = [
   "What is DAO PropTech?",
   "How does real estate tokenization work?",
   "What are the benefits of investing through DAO PropTech?",
-  "Can you explain the concept of fractional ownership?"
+  "Give me an overview of the projects undertaken by DAO PropTech"
 ];
 
 const useTheme = () => {
@@ -58,9 +58,14 @@ const useTheme = () => {
 const useChatbot = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [botState, setBotState] = useState<'idle' | 'thinking' | 'streaming'>('idle');
+  const [botState, setBotState] = useState<'idle' | 'thinking' | 'streaming' | 'rate-limited' | 'error'>('idle');
   const [streamingMessage, setStreamingMessage] = useState('');
   const [session, setSession] = useState<ChatSession>({ sessionId: null });
+  const [errorDetails, setErrorDetails] = useState<{
+    type: 'rate_limit' | 'server_error' | 'quota_exceeded' | 'timeout' | 'unknown';
+    message: string;
+    retryAfter?: number;
+  } | null>(null);
 
   const initializeSession = useCallback(async () => {
     try {
@@ -91,6 +96,7 @@ const useChatbot = () => {
     setInput('');
     setBotState('thinking');
     setStreamingMessage('');
+    setErrorDetails(null);
 
     try {
       const response = await fetch('/api/ask', {
@@ -107,7 +113,32 @@ const useChatbot = () => {
           await initializeSession();
           throw new Error('Session expired. Please try again.');
         }
-        throw new Error('Stream response was not ok');
+        
+        const errorData = await response.json();
+        
+        if (response.status === 429) {
+          const retryAfter = parseInt(response.headers.get('Retry-After') || '300');
+          setErrorDetails({
+            type: 'rate_limit',
+            message: errorData.error?.message || 'Rate limit exceeded. Please try again later.',
+            retryAfter
+          });
+          setBotState('rate-limited');
+          setTimeout(() => {
+            setBotState('idle');
+            setErrorDetails(null);
+          }, retryAfter * 1000);
+          throw new Error(errorData.error?.message);
+        }
+        
+        if (response.status === 503) {
+          setErrorDetails({
+            type: 'server_error',
+            message: 'Server is currently overloaded. Please try again in a few minutes.'
+          });
+        }
+        
+        throw new Error(errorData.error?.message || 'An error occurred');
       }
       
       const reader = response.body?.getReader();
@@ -146,12 +177,14 @@ const useChatbot = () => {
       const errorMessage = error instanceof Error ? error.message : 'An error occurred';
       const errorBotMessage: Message = { 
         role: 'bot', 
-        content: `Sorry, I encountered an error: ${errorMessage}` 
+        content: `I apologize, but I encountered an issue: ${errorMessage}` 
       };
       setMessages(prev => [...prev, errorBotMessage]);
     } finally {
-      setBotState('idle');
-      setStreamingMessage('');
+      if (['thinking', 'streaming'].includes(botState)) {
+        setBotState('idle');
+        setStreamingMessage('');
+      }
     }
   }, [botState, session.sessionId, initializeSession]);
 
@@ -180,7 +213,8 @@ const useChatbot = () => {
     botState, 
     streamingMessage, 
     handleSendMessage,
-    sessionReady: !!session.sessionId 
+    sessionReady: !!session.sessionId,
+    errorDetails
   };
 }
 
@@ -193,8 +227,14 @@ const GeometricShapes = () => (
   </div>
 )
 
-const ThinkingIndicator = ({ state, isDarkMode }: { state: 'thinking' | 'streaming' | 'idle', isDarkMode: boolean }) => {
-  if (state === 'idle') return null;
+const ThinkingIndicator = ({ 
+  state, 
+  isDarkMode 
+}: { 
+  state: 'thinking' | 'streaming' | 'idle' | 'error' | 'rate-limited', 
+  isDarkMode: boolean 
+}) => {
+  if (state === 'idle' || state === 'error' || state === 'rate-limited') return null;
 
   return (
     <div className="flex items-center space-x-2 mb-4">
@@ -234,6 +274,37 @@ const scrollbarStyles = `
   }
 `;
 
+const ErrorMessage = ({ error, isDarkMode }: { 
+  error: { type: string; message: string; retryAfter?: number; } | null;
+  isDarkMode: boolean;
+}) => {
+  if (!error) return null;
+
+  const getErrorStyle = () => {
+    switch (error.type) {
+      case 'rate_limit':
+        return isDarkMode ? 'bg-red-900/90' : 'bg-red-50';
+      case 'server_error':
+        return isDarkMode ? 'bg-orange-900/90' : 'bg-orange-50';
+      default:
+        return isDarkMode ? 'bg-gray-800/90' : 'bg-gray-50';
+    }
+  };
+
+  return (
+    <div className={`fixed inset-x-0 top-16 z-50 p-4 ${getErrorStyle()}`}>
+      <div className="max-w-3xl mx-auto flex items-center justify-between">
+        <div className={isDarkMode ? 'text-white' : 'text-gray-800'}>
+          <p className="font-semibold">{error.message}</p>
+          {error.retryAfter && (
+            <p className="text-sm">Available again in {Math.ceil(error.retryAfter / 60)} minutes</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function ChatbotPage() {
   const { isDarkMode, toggleTheme } = useTheme()
   const { 
@@ -243,7 +314,8 @@ export default function ChatbotPage() {
     botState, 
     streamingMessage, 
     handleSendMessage,
-    sessionReady 
+    sessionReady,
+    errorDetails
   } = useChatbot()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
@@ -288,6 +360,7 @@ export default function ChatbotPage() {
           {isDarkMode ? <SunIcon className="h-4 w-4 text-white" /> : <MoonIcon className="h-4 w-4 text-black" />}
         </Button>
       </header>
+      <ErrorMessage error={errorDetails} isDarkMode={isDarkMode} />
 
       <main className="flex-1 flex flex-col overflow-hidden relative pb-[env(safe-area-inset-bottom)]">
         {messages.length === 0 && <GeometricShapes />}
