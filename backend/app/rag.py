@@ -48,14 +48,11 @@ from .models import ChatMessage
 # Database
 from .database import SessionLocal, Base, engine
 
-# Create tables
-Base.metadata.create_all(bind=engine)
-
 class RAG:
     def __init__(self, model_name: str = 'gpt-4o-mini', memory_ttl: int = 1800, db_session=None):
         try:
-            # Add database session
-            self.db = db_session
+            # Store the session factory instead of a session
+            self.db_session = SessionLocal
             
             # Initialize tokenizer with updated limits for gpt-4o-mini
             self.tokenizer = tiktoken.get_encoding("cl100k_base")
@@ -386,29 +383,30 @@ Please provide a clear, specific answer focusing on the relevant details.""")
             memory.chat_memory.add_user_message(question)
             memory.chat_memory.add_ai_message(full_response)
 
-            # Create message objects
-            user_message = ChatMessage(
-                session_id=session_id,
-                role='user',
-                content=question,
-                tokens=len(question.split())
-            )
-            bot_message = ChatMessage(
-                session_id=session_id,
-                role='bot',
-                content=full_response,
-                tokens=len(full_response.split())
-            )
+            async with self.db_session() as session:
+                try:
+                    # Create message objects
+                    user_message = ChatMessage(
+                        session_id=session_id,
+                        role='user',
+                        content=question,
+                        tokens=len(question.split())
+                    )
+                    bot_message = ChatMessage(
+                        session_id=session_id,
+                        role='bot',
+                        content=full_response,
+                        tokens=len(full_response.split())
+                    )
 
-            # Add to session and commit
-            try:
-                self.db.add(user_message)
-                self.db.add(bot_message)
-                await self.db.commit()
-            except Exception as e:
-                await self.db.rollback()
-                logger.error(f"Database error: {str(e)}")
-                raise
+                    # Add to session and commit
+                    session.add(user_message)
+                    session.add(bot_message)
+                    await session.commit()
+                except Exception as e:
+                    await session.rollback()
+                    logger.error(f"Database error: {str(e)}")
+                    raise
 
     async def _run_periodic_cleanup(self):
         """Run periodic cleanup of old sessions"""
@@ -556,11 +554,7 @@ Please provide a clear, specific answer focusing on the relevant details.""")
 
 # Create an instance of the RAG class with database session
 def get_rag_instance():
-    db = SessionLocal()
-    try:
-        return RAG(db_session=db)
-    finally:
-        db.close()
+    return RAG()  # No need to pass db_session anymore
 
 rag_instance = get_rag_instance()
 

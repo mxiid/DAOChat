@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from urllib.parse import quote_plus
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+import asyncio
 
 load_dotenv()
 
@@ -31,6 +32,7 @@ def create_schema(target, connection, **kw):
 # Listen for schema creation
 event.listen(Base.metadata, 'before_create', create_schema)
 
+# Create async engine
 engine = create_async_engine(
     SQLALCHEMY_DATABASE_URL,
     pool_size=5,
@@ -40,6 +42,15 @@ engine = create_async_engine(
     echo=True
 )
 
+# Create sync engine for table creation
+sync_engine = create_engine(
+    SQLALCHEMY_DATABASE_URL.replace('+asyncpg', ''),
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=1800
+)
+
 # Create async session factory
 SessionLocal = sessionmaker(
     engine, 
@@ -47,9 +58,12 @@ SessionLocal = sessionmaker(
     expire_on_commit=False
 )
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close() 
+# Create tables using sync engine
+Base.metadata.create_all(bind=sync_engine)
+
+async def get_db():
+    async with SessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close() 
