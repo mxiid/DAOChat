@@ -43,10 +43,11 @@ from fastapi import HTTPException
 from .monitoring import ChatMonitoring
 
 # Models
-from .models import ChatMessage
+from .models import ChatMessage, ChatSession
 
 # Database
 from .database import SessionLocal, Base, engine
+from sqlalchemy import select
 
 class RAG:
     def __init__(self, model_name: str = 'gpt-4o-mini', memory_ttl: int = 1800, db_session=None):
