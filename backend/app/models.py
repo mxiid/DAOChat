@@ -1,8 +1,6 @@
 from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
-
-Base = declarative_base()
+from .database import Base  # Import Base from database instead of creating new one
 
 class ChatSession(Base):
     __tablename__ = 'chat_sessions'

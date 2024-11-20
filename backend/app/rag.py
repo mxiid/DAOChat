@@ -46,7 +46,10 @@ from .monitoring import ChatMonitoring
 from .models import ChatMessage
 
 # Database
-from .database import SessionLocal
+from .database import SessionLocal, Base, engine
+
+# Create tables
+Base.metadata.create_all(bind=engine)
 
 class RAG:
     def __init__(self, model_name: str = 'gpt-4o-mini', memory_ttl: int = 1800, db_session=None):
@@ -535,8 +538,14 @@ Please provide a clear, specific answer focusing on the relevant details.""")
         return session_id
 
 # Create an instance of the RAG class with database session
-db = SessionLocal()
-rag_instance = RAG(db_session=db)
+def get_rag_instance():
+    db = SessionLocal()
+    try:
+        return RAG(db_session=db)
+    finally:
+        db.close()
+
+rag_instance = get_rag_instance()
 
 # Define the functions to be used in routes
 async def create_chat_session() -> str:
