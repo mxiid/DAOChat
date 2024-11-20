@@ -313,8 +313,9 @@ class RAG:
         """Process and stream responses with proper session management"""
         if session_id not in self.active_sessions:
             logger.warning(f"Invalid session ID: {session_id}")
-            yield "Session expired. Please start a new conversation."
-            return
+            async def error_gen():
+                yield "Session expired. Please start a new conversation."
+            return error_gen()
 
         async with self.request_semaphore:
             try:
@@ -325,24 +326,30 @@ class RAG:
                 # Process query and get messages
                 messages = await self._prepare_messages(question, memory)
 
-                # Stream response with error handling
-                collected_response = []
-                async for chunk in self.streaming_llm.astream(messages):
-                    if hasattr(chunk, 'content') and chunk.content:
-                        collected_response.append(chunk.content)
-                        yield chunk.content
+                # Create and return the async generator
+                async def response_generator():
+                    collected_response = []
+                    async for chunk in self.streaming_llm.astream(messages):
+                        if hasattr(chunk, 'content') and chunk.content:
+                            collected_response.append(chunk.content)
+                            yield chunk.content
 
-                # Update memory and store in database
-                await self._update_conversation_history(
-                    session_id, 
-                    question, 
-                    collected_response, 
-                    memory
-                )
+                    # Update memory and store in database after completion
+                    if collected_response:
+                        await self._update_conversation_history(
+                            session_id, 
+                            question, 
+                            collected_response, 
+                            memory
+                        )
+
+                return response_generator()
 
             except Exception as e:
                 logger.exception("Error in stream_query")
-                yield "I apologize, but I encountered an error processing your request."
+                async def error_gen():
+                    yield "I apologize, but I encountered an error processing your request."
+                return error_gen()
 
     async def _prepare_messages(self, question: str, memory):
         """Prepare messages for the conversation"""

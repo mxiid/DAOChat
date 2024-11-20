@@ -59,7 +59,9 @@ async def ask_stream(
         
         async def generate():
             try:
-                async for token in rag_instance.stream_query(question.text, session_id):
+                # Get the async generator from stream_query
+                generator = await rag_instance.stream_query(question.text, session_id)
+                async for token in generator:
                     yield f"data: {json.dumps({'token': token})}\n\n"
             except Exception as e:
                 logger.error(f"Error in stream generation: {str(e)}", exc_info=True)
