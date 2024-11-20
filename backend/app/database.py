@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from urllib.parse import quote_plus
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 load_dotenv()
 
@@ -18,7 +19,7 @@ DB_PORT = os.getenv('DB_PORT', '5432')
 DB_NAME = os.getenv('DB_NAME', 'chatbot_db')
 
 # Create URL with schema specification
-SQLALCHEMY_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+SQLALCHEMY_DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # Create schema if it doesn't exist
 def create_schema(target, connection, **kw):
@@ -30,18 +31,21 @@ def create_schema(target, connection, **kw):
 # Listen for schema creation
 event.listen(Base.metadata, 'before_create', create_schema)
 
-engine = create_engine(
+engine = create_async_engine(
     SQLALCHEMY_DATABASE_URL,
     pool_size=5,
     max_overflow=10,
     pool_timeout=30,
     pool_recycle=1800,
-    connect_args={
-        'options': '-c search_path=chatbot,public'  # Set schema search path
-    }
+    echo=True
 )
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Create async session factory
+SessionLocal = sessionmaker(
+    engine, 
+    class_=AsyncSession, 
+    expire_on_commit=False
+)
 
 def get_db():
     db = SessionLocal()

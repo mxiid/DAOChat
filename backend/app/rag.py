@@ -386,24 +386,29 @@ Please provide a clear, specific answer focusing on the relevant details.""")
             memory.chat_memory.add_user_message(question)
             memory.chat_memory.add_ai_message(full_response)
 
-            # Store messages in database
-            await self.db.execute(
-                ChatMessage(
-                    session_id=session_id,
-                    role='user',
-                    content=question,
-                    tokens=len(question.split())
-                )
+            # Create message objects
+            user_message = ChatMessage(
+                session_id=session_id,
+                role='user',
+                content=question,
+                tokens=len(question.split())
+            )
+            bot_message = ChatMessage(
+                session_id=session_id,
+                role='bot',
+                content=full_response,
+                tokens=len(full_response.split())
             )
 
-            await self.db.execute(
-                ChatMessage(
-                    session_id=session_id,
-                    role='bot',
-                    content=full_response,
-                    tokens=len(full_response.split())
-                )
-            )
+            # Add to session and commit
+            try:
+                self.db.add(user_message)
+                self.db.add(bot_message)
+                await self.db.commit()
+            except Exception as e:
+                await self.db.rollback()
+                logger.error(f"Database error: {str(e)}")
+                raise
 
     async def _run_periodic_cleanup(self):
         """Run periodic cleanup of old sessions"""
