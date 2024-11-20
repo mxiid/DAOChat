@@ -5,16 +5,22 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from prometheus_client import Counter, Histogram
 import time
+from functools import wraps
+import logging
+from typing import Callable, Any
 
 # Metrics
 CHAT_REQUESTS = Counter('chat_requests_total', 'Total chat requests', ['status'])
 RESPONSE_TIME = Histogram('response_time_seconds', 'Response time in seconds')
 TOKEN_USAGE = Counter('token_usage_total', 'Total tokens used', ['type'])
 
+logger = logging.getLogger(__name__)
+
 class ChatMonitoring:
     @staticmethod
-    def track_request(func):
-        async def wrapper(*args, **kwargs):
+    def track_request(func: Callable) -> Callable:
+        @wraps(func)
+        async def wrapper(*args, **kwargs) -> Any:
             start_time = time.time()
             try:
                 result = await func(*args, **kwargs)
@@ -22,6 +28,7 @@ class ChatMonitoring:
                 return result
             except Exception as e:
                 CHAT_REQUESTS.labels(status='error').inc()
+                logger.error(f"Error in {func.__name__}: {str(e)}")
                 raise e
             finally:
                 RESPONSE_TIME.observe(time.time() - start_time)

@@ -322,76 +322,81 @@ class RAG:
                 memory = self._get_or_create_memory(session_id)
                 self.last_access[session_id] = datetime.now().timestamp()
 
-                # For very short queries, we'll use a simplified context
-                if len(question.split()) <= 1:
-                    messages = [
-                        SystemMessage(content=self.system_message),
-                        *memory.chat_memory.messages[-10:],  # Include conversation history
-                        HumanMessage(content=question)
-                    ]
-                else:
-                    # Regular query processing with full context
-                    query_type = self._classify_query(question.lower())
-                    project_name = self._extract_project_name(question)
-                    docs = await self._get_relevant_documents(question, query_type, project_name)
+                # Process query and get messages
+                messages = await self._prepare_messages(question, memory)
 
-                    context = self._format_project_response(docs) if project_name else "\n\n".join(
-                        f"- {doc.page_content}" for doc in docs
-                    )
+                # Stream response with error handling
+                collected_response = []
+                async for chunk in self.streaming_llm.astream(messages):
+                    if hasattr(chunk, 'content') and chunk.content:
+                        collected_response.append(chunk.content)
+                        yield chunk.content
 
-                    messages = [
-                        SystemMessage(content=self.system_message),
-                        *memory.chat_memory.messages[-10:],
-                        HumanMessage(content=f"""Based on this context:
+                # Update memory and store in database
+                await self._update_conversation_history(
+                    session_id, 
+                    question, 
+                    collected_response, 
+                    memory
+                )
+
+            except Exception as e:
+                logger.exception("Error in stream_query")
+                yield "I apologize, but I encountered an error processing your request."
+
+    async def _prepare_messages(self, question: str, memory):
+        """Prepare messages for the conversation"""
+        if len(question.split()) <= 1:
+            return [
+                SystemMessage(content=self.system_message),
+                *memory.chat_memory.messages[-10:],
+                HumanMessage(content=question)
+            ]
+        
+        query_type = self._classify_query(question.lower())
+        project_name = self._extract_project_name(question)
+        docs = await self._get_relevant_documents(question, query_type, project_name)
+        
+        context = self._format_project_response(docs) if project_name else "\n\n".join(
+            f"- {doc.page_content}" for doc in docs
+        )
+        
+        return [
+            SystemMessage(content=self.system_message),
+            *memory.chat_memory.messages[-10:],
+            HumanMessage(content=f"""Based on this context:
 {context}
 
 Question: {question}
 
 Please provide a clear, specific answer focusing on the relevant details.""")
-                    ]
+        ]
 
-                # Stream response with error handling
-                collected_response = []
-                try:
-                    async for chunk in self.streaming_llm.astream(messages):
-                        if hasattr(chunk, 'content') and chunk.content:
-                            collected_response.append(chunk.content)
-                            yield chunk.content
+    async def _update_conversation_history(self, session_id, question, collected_response, memory):
+        """Update conversation history and database"""
+        if collected_response:
+            full_response = ''.join(collected_response)
+            memory.chat_memory.add_user_message(question)
+            memory.chat_memory.add_ai_message(full_response)
 
-                    # Update memory with complete response
-                    if collected_response:
-                        full_response = ''.join(collected_response)
-                        memory.chat_memory.add_user_message(question)
-                        memory.chat_memory.add_ai_message(full_response)
+            # Store messages in database
+            await self.db.execute(
+                ChatMessage(
+                    session_id=session_id,
+                    role='user',
+                    content=question,
+                    tokens=len(question.split())
+                )
+            )
 
-                    # Store message in database
-                    await self.db.execute(
-                        ChatMessage(
-                            session_id=session_id,
-                            role='user',
-                            content=question,
-                            tokens=len(question.split())  # Simple approximation
-                        )
-                    )
-
-                    # Store bot response
-                    if collected_response:
-                        await self.db.execute(
-                            ChatMessage(
-                                session_id=session_id,
-                                role='bot',
-                                content=full_response,
-                                tokens=len(full_response.split())
-                            )
-                        )
-
-                except Exception as e:
-                    logger.error(f"Streaming error: {str(e)}")
-                    yield "\nI apologize, but I encountered an error while generating the response."
-
-            except Exception as e:
-                logger.exception("Error in stream_query")
-                yield "I apologize, but I encountered an error processing your request."
+            await self.db.execute(
+                ChatMessage(
+                    session_id=session_id,
+                    role='bot',
+                    content=full_response,
+                    tokens=len(full_response.split())
+                )
+            )
 
     async def _run_periodic_cleanup(self):
         """Run periodic cleanup of old sessions"""
