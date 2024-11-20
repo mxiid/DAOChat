@@ -3,16 +3,21 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
+from urllib.parse import quote_plus
 
 load_dotenv()
 
-# Database configuration
-DB_USER = os.getenv('DB_USER')
-DB_PASSWORD = os.getenv('DB_PASSWORD') 
-DB_HOST = os.getenv('DB_HOST')
-DB_PORT = os.getenv('DB_PORT')
-DB_NAME = os.getenv('DB_NAME')
+# Database configuration with default values
+DB_USER = os.getenv('DB_USER', 'chatbot_user')
+DB_PASSWORD = quote_plus(os.getenv('DB_PASSWORD', ''))
+DB_HOST = os.getenv('DB_HOST', '195.35.0.107')
+DB_PORT = os.getenv('DB_PORT', '5432')
+DB_NAME = os.getenv('DB_NAME', 'chatbot_db')
 
+# Log configuration (but not sensitive data)
+print(f"Connecting to database at {DB_HOST}:{DB_PORT}/{DB_NAME}")
+
+# Create URL with encoded password
 SQLALCHEMY_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 engine = create_engine(
