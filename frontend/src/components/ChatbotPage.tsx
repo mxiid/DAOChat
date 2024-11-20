@@ -349,7 +349,7 @@ export default function ChatbotPage() {
             alt="DAO PropTech Emblem" 
             className={`w-6 h-6 mr-2 ${isDarkMode ? 'invert' : ''}`}
           />
-          <span>DAO Chat <span className="text-sm">(Beta)</span></span>
+          <span className="text-xl">DAO Chat</span> <span className="text-xs">(Beta)</span>
         </div>
         <Button 
           variant="outline" 
