@@ -63,6 +63,7 @@ protobuf==5.28.2
 prometheus-client
 psutil==6.0.0
 pycparser==2.22
+psycopg2-binary
 pydantic==2.9.2
 pydantic-settings==2.5.2
 pydantic_core==2.23.4
