@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from urllib.parse import quote_plus
@@ -23,9 +23,9 @@ SQLALCHEMY_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_P
 # Create schema if it doesn't exist
 def create_schema(target, connection, **kw):
     # Create schema and set permissions
-    connection.execute('CREATE SCHEMA IF NOT EXISTS chatbot')
-    connection.execute(f'ALTER SCHEMA chatbot OWNER TO {DB_USER}')
-    connection.execute(f'GRANT ALL ON SCHEMA chatbot TO {DB_USER}')
+    connection.execute(text('CREATE SCHEMA IF NOT EXISTS chatbot'))
+    connection.execute(text(f'ALTER SCHEMA chatbot OWNER TO {DB_USER}'))
+    connection.execute(text(f'GRANT ALL ON SCHEMA chatbot TO {DB_USER}'))
 
 # Listen for schema creation
 event.listen(Base.metadata, 'before_create', create_schema)
