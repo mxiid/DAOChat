@@ -128,7 +128,7 @@ const useChatbot = () => {
             setBotState('idle');
             setErrorDetails(null);
           }, retryAfter * 1000);
-          throw new Error(errorData.error?.message);
+          return;
         }
         
         if (response.status === 503) {
@@ -136,6 +136,8 @@ const useChatbot = () => {
             type: 'server_error',
             message: 'Server is currently overloaded. Please try again in a few minutes.'
           });
+          setBotState('error');
+          return;
         }
         
         throw new Error(errorData.error?.message || 'An error occurred');
@@ -171,6 +173,8 @@ const useChatbot = () => {
 
       const botMessage: Message = { role: 'bot', content: accumulatedMessage };
       setMessages(prev => [...prev, botMessage]);
+      setBotState('idle');
+      setStreamingMessage('');
       
     } catch (error) {
       console.error('Error sending message:', error);
@@ -180,11 +184,7 @@ const useChatbot = () => {
         content: `I apologize, but I encountered an issue: ${errorMessage}` 
       };
       setMessages(prev => [...prev, errorBotMessage]);
-    } finally {
-      if (['thinking', 'streaming'].includes(botState)) {
-        setBotState('idle');
-        setStreamingMessage('');
-      }
+      setBotState('idle');
     }
   }, [botState, session.sessionId, initializeSession]);
 
