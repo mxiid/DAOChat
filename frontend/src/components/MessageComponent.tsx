@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from 'react'
-import { useRef } from 'react'
+import { useRef, useEffect } from 'react'
 import { UserIcon } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -18,19 +18,31 @@ const MessageComponent: React.FC<{
 }> = React.memo(({ message, isDarkMode, isStreaming }) => {
   const contentRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (contentRef.current && isStreaming) {
+      const scrollContainer = contentRef.current.closest('.custom-scrollbar');
+      if (scrollContainer) {
+        scrollContainer.scrollTo({
+          top: scrollContainer.scrollHeight,
+          behavior: 'auto'
+        });
+      }
+    }
+  }, [isStreaming, message.content]);
+
   const renderContent = () => {
     if (message.role === 'user') {
       return <p className="text-sm sm:text-base break-words">{message.content}</p>;
     }
 
     return (
-      <div ref={contentRef}>
+      <div ref={contentRef} className="overflow-hidden">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
-          className={`prose prose-sm max-w-none break-words ${isDarkMode ? "prose-invert" : ""}`}
+          className={`prose prose-sm max-w-none break-words whitespace-pre-wrap ${isDarkMode ? "prose-invert" : ""}`}
           components={{
             p: ({ node, ...props }) => (
-              <p {...props} className={`mb-4 text-sm sm:text-base ${isDarkMode ? "text-white" : "text-black"}`} />
+              <p {...props} className={`whitespace-pre-wrap mb-4 text-sm sm:text-base ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             a: ({ node, ...props }) => (
               <a {...props} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer" />

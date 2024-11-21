@@ -397,7 +397,11 @@ export default function ChatbotPage() {
             </div>
           </div>
         ) : (
-          <ScrollArea className="flex-1 custom-scrollbar" ref={scrollAreaRef}>
+          <ScrollArea 
+            className="flex-1 custom-scrollbar overflow-y-auto" 
+            ref={scrollAreaRef}
+            scrollHideDelay={0}
+          >
             <div className="px-4 py-2 max-w-3xl mx-auto">
               {messages.map((message, index) => (
                 <MessageComponent 
