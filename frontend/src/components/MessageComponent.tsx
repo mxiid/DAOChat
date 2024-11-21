@@ -74,19 +74,24 @@ const MessageComponent: React.FC<{
               )
             },
             table: ({ node, ...props }) => (
-              <div className="overflow-x-auto mb-4">
+              <div className="overflow-x-auto mb-4 border dark:border-gray-700 rounded-lg">
                 <table {...props} className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" />
               </div>
             ),
-            thead: ({ node, ...props }) => <thead {...props} className="bg-gray-50 dark:bg-gray-800" />,
+            thead: ({ node, ...props }) => (
+              <thead {...props} className="bg-gray-50 dark:bg-gray-800" />
+            ),
             th: ({ node, ...props }) => (
               <th
                 {...props}
-                className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-300"
+                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-300 border-r last:border-r-0 dark:border-gray-700"
               />
             ),
             td: ({ node, ...props }) => (
-              <td {...props} className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" />
+              <td 
+                {...props} 
+                className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 border-r last:border-r-0 dark:border-gray-700" 
+              />
             ),
           }}
         >
