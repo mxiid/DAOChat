@@ -148,26 +148,42 @@ const useChatbot = () => {
 
       const decoder = new TextDecoder();
       let accumulatedMessage = '';
-
-      setBotState('streaming');
+      let partialChunk = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-        
+        const chunk = decoder.decode(value, { stream: true });
+        const fullChunk = partialChunk + chunk;
+        const lines = fullChunk.split('\n');
+        partialChunk = lines.pop() || '';
+
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
-              accumulatedMessage += data.token;
-              setStreamingMessage(accumulatedMessage);
+              if (data.token) {
+                accumulatedMessage += data.token;
+                setStreamingMessage(accumulatedMessage);
+              }
             } catch (e) {
               console.error('Error parsing SSE data:', e);
             }
           }
+        }
+      }
+
+      // Handle any remaining partial chunk
+      if (partialChunk && partialChunk.startsWith('data: ')) {
+        try {
+          const data = JSON.parse(partialChunk.slice(6));
+          if (data.token) {
+            accumulatedMessage += data.token;
+            setStreamingMessage(accumulatedMessage);
+          }
+        } catch (e) {
+          console.error('Error parsing SSE data:', e);
         }
       }
 
