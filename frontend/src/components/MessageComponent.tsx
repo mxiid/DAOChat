@@ -11,17 +11,6 @@ interface Message {
   content: string;
 }
 
-interface TableProps extends React.TableHTMLAttributes<HTMLTableElement> {
-  node?: any;
-  children?: React.ReactNode;
-}
-
-interface TableChildProps {
-  props?: {
-    children?: React.ReactNode;
-  };
-}
-
 const MessageComponent: React.FC<{
   message: Message;
   isDarkMode: boolean;
@@ -84,56 +73,26 @@ const MessageComponent: React.FC<{
                 </code>
               )
             },
-            table: ({ node, children, ...props }: TableProps) => {
-              const childrenArray = React.Children.toArray(children);
-              if (childrenArray.length < 2) return null;
-
-              const thead = childrenArray[0] as React.ReactElement;
-              const tbody = childrenArray[1] as React.ReactElement;
-
-              if (!thead?.props?.children || !tbody?.props?.children) {
-                return null;
-              }
-
-              const headerChildren = React.Children.toArray(thead.props.children) as React.ReactElement[];
-              const bodyChildren = React.Children.toArray(tbody.props.children) as React.ReactElement[];
-
-              return (
-                <div className="overflow-x-auto mb-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-                  <table {...props} className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
-                    <thead className="bg-gray-100 dark:bg-gray-800">
-                      <tr>
-                        {headerChildren.map((th: React.ReactElement, index) => (
-                          <th
-                            key={index}
-                            className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-300 border-r last:border-r-0 border-gray-200 dark:border-gray-700"
-                          >
-                            {th.props.children}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white dark:bg-gray-800">
-                      {bodyChildren.map((tr: React.ReactElement, index) => {
-                        const cells = React.Children.toArray(tr.props.children) as React.ReactElement[];
-                        return (
-                          <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                            {cells.map((td: React.ReactElement, cellIndex) => (
-                              <td
-                                key={cellIndex}
-                                className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 border-r last:border-r-0 border-gray-200 dark:border-gray-700 border-t"
-                              >
-                                {td.props.children}
-                              </td>
-                            ))}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            },
+            table: ({ node, ...props }) => (
+              <div className="overflow-x-auto mb-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                <table {...props} className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800" />
+              </div>
+            ),
+            thead: ({ node, ...props }) => (
+              <thead {...props} className="bg-gray-50 dark:bg-gray-800" />
+            ),
+            th: ({ node, ...props }) => (
+              <th
+                {...props}
+                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-r last:border-r-0 border-gray-200 dark:border-gray-700"
+              />
+            ),
+            td: ({ node, ...props }) => (
+              <td 
+                {...props} 
+                className="px-4 py-3 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-r last:border-r-0 border-gray-200 dark:border-gray-700 border-t" 
+              />
+            ),
           }}
         >
           {message.content}
