@@ -7,32 +7,32 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 interface Message {
-  role: 'user' | 'bot';
-  content: string;
+  role: 'user' | 'bot'
+  content: string
 }
 
 const MessageComponent: React.FC<{
-  message: Message;
-  isDarkMode: boolean;
-  isStreaming: boolean;
+  message: Message
+  isDarkMode: boolean
+  isStreaming: boolean
 }> = React.memo(({ message, isDarkMode, isStreaming }) => {
-  const contentRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (contentRef.current && isStreaming) {
-      const scrollContainer = contentRef.current.closest('.custom-scrollbar');
+      const scrollContainer = contentRef.current.closest('.custom-scrollbar')
       if (scrollContainer) {
         scrollContainer.scrollTo({
           top: scrollContainer.scrollHeight,
           behavior: 'auto'
-        });
+        })
       }
     }
-  }, [isStreaming, message.content]);
+  }, [isStreaming, message.content])
 
   const renderContent = () => {
     if (message.role === 'user') {
-      return <p className="text-sm sm:text-base break-words">{message.content}</p>;
+      return <p className="text-sm sm:text-base break-words">{message.content}</p>
     }
 
     return (
@@ -77,10 +77,7 @@ const MessageComponent: React.FC<{
                   </code>
                 </pre>
               ) : (
-                <code
-                  {...props}
-                  className={`bg-gray-100 rounded px-1 py-0.5 ${isDarkMode ? "bg-gray-800 text-white" : "text-black"}`}
-                >
+                <code {...props} className={`bg-gray-100 rounded px-1 py-0.5 ${isDarkMode ? "bg-gray-800 text-white" : "text-black"}`}>
                   {children}
                 </code>
               )
@@ -94,24 +91,18 @@ const MessageComponent: React.FC<{
               <thead {...props} className="bg-gray-50 dark:bg-gray-800" />
             ),
             th: ({ node, ...props }) => (
-              <th
-                {...props}
-                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-r last:border-r-0 border-gray-200 dark:border-gray-700"
-              />
+              <th {...props} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-r last:border-r-0 border-gray-200 dark:border-gray-700" />
             ),
             td: ({ node, ...props }) => (
-              <td 
-                {...props} 
-                className="px-4 py-3 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-r last:border-r-0 border-gray-200 dark:border-gray-700 border-t" 
-              />
-            ),
+              <td {...props} className="px-4 py-3 text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-r last:border-r-0 border-gray-200 dark:border-gray-700 border-t" />
+            )
           }}
         >
           {message.content}
         </ReactMarkdown>
       </div>
-    );
-  };
+    )
+  }
 
   return (
     <div className={`flex items-start mb-4 ${message.role === "user" ? "justify-end" : ""}`}>
@@ -124,16 +115,14 @@ const MessageComponent: React.FC<{
           />
         </div>
       )}
-      <div
-        className={`rounded-lg p-2 sm:p-3 max-w-[80%] ${
-          message.role === "user" ? "bg-[#ADFF2F] text-black" : isDarkMode ? "bg-gray-700" : "bg-gray-200"
-        }`}
-      >
+      <div className={`rounded-lg p-2 sm:p-3 max-w-[80%] ${
+        message.role === "user" ? "bg-[#ADFF2F] text-black" : isDarkMode ? "bg-gray-700" : "bg-gray-200"
+      }`}>
         {renderContent()}
       </div>
       {message.role === "user" && <UserIcon className="w-5 h-5 sm:w-6 sm:h-6 ml-2 text-[#ADFF2F] flex-shrink-0 mt-1" />}
     </div>
-  );
-});
+  )
+})
 
-export default MessageComponent;
+export default MessageComponent
