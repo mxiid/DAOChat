@@ -402,7 +402,7 @@ export default function ChatbotPage() {
             ref={scrollAreaRef}
             scrollHideDelay={0}
           >
-            <div className="px-4 py-2 max-w-3xl mx-auto">
+            <div className="px-4 py-1 max-w-3xl mx-auto">
               {messages.map((message, index) => (
                 <MessageComponent 
                   key={index} 
