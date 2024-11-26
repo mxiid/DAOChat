@@ -38,15 +38,18 @@ async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
         # Create new session in RAG first
         session_id = await rag_instance.create_session()
         
-        # Create new session
-        new_session = ChatSession(
-            id=session_id,
-            user_id=client_info["ip_address"],
-            session_metadata=client_info,
-            is_active=True
+        # Update the existing session with client info
+        session = await db.execute(
+            select(ChatSession).where(ChatSession.id == session_id)
         )
+        session = session.scalar_one_or_none()
         
-        db.add(new_session)
+        if not session:
+            raise HTTPException(status_code=500, detail="Failed to create session")
+        
+        # Update session with client info
+        session.user_id = client_info["ip_address"]
+        session.session_metadata = client_info
         await db.commit()
         
         return {
