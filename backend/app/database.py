@@ -66,3 +66,23 @@ async def get_db():
             yield session
         finally:
             await session.close() 
+
+# Migration function to add last_activity column
+def add_last_activity_column(target, connection, **kw):
+    try:
+        # Drop the table and recreate it with the new column
+        connection.execute(text("""
+            DROP TABLE IF EXISTS chatbot.chat_sessions CASCADE;
+            CREATE TABLE chatbot.chat_sessions (
+                id VARCHAR PRIMARY KEY,
+                user_id VARCHAR,
+                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                session_metadata JSONB,
+                is_active BOOLEAN DEFAULT TRUE,
+                ended_at TIMESTAMP WITHOUT TIME ZONE,
+                last_activity TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        """))
+    except Exception as e:
+        print(f"Error in migration: {str(e)}")
+        raise 
