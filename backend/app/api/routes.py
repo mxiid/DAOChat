@@ -27,17 +27,22 @@ async def ask_question(
 
         # Get session from database
         session = await db.execute(
-            select(ChatSession).where(ChatSession.id == session_id)
+            select(ChatSession)
+            .where(
+                ChatSession.id == session_id,
+                ChatSession.is_active == True
+            )
         )
         session = session.scalar_one_or_none()
 
         if not session:
-            raise HTTPException(status_code=401, detail="Invalid session")
+            raise HTTPException(status_code=401, detail="Invalid or inactive session")
 
         # Verify session exists in RAG
         if session_id not in rag_instance.active_sessions:
-            # Clean up invalid session
-            await db.delete(session)
+            # Mark session as inactive
+            session.is_active = False
+            session.ended_at = datetime.utcnow()
             await db.commit()
             raise HTTPException(status_code=401, detail="Session expired. Please create a new session.")
 
@@ -73,6 +78,22 @@ async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
         client_ip = request.client.host
         user_agent = request.headers.get("user-agent", "Unknown")
 
+        # Mark any existing active sessions as inactive
+        existing_sessions = await db.execute(
+            select(ChatSession)
+            .where(
+                ChatSession.user_id == client_ip,
+                ChatSession.is_active == True
+            )
+        )
+        for old_session in existing_sessions.scalars():
+            old_session.is_active = False
+            old_session.ended_at = datetime.utcnow()
+            if old_session.id in rag_instance.active_sessions:
+                await rag_instance._remove_session(old_session.id)
+
+        await db.commit()
+
         # Create new session in RAG first
         session_id = await rag_instance.create_session()
         
@@ -88,28 +109,10 @@ async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
         new_session = ChatSession(
             id=session_id,
             user_id=client_ip,
-            session_metadata=metadata
+            session_metadata=metadata,
+            is_active=True
         )
         
-        # Clean up old sessions for this IP
-        old_sessions = await db.execute(
-            select(ChatSession)
-            .where(ChatSession.user_id == client_ip)
-        )
-        old_sessions = old_sessions.scalars().all()
-        
-        for old_session in old_sessions:
-            try:
-                # Try to remove from RAG if it exists
-                if old_session.id in rag_instance.active_sessions:
-                    await rag_instance._remove_session(old_session.id)
-                # Delete from database
-                await db.delete(old_session)
-            except Exception as e:
-                logger.warning(f"Error cleaning up old session {old_session.id}: {str(e)}")
-                continue
-        
-        # Add new session
         db.add(new_session)
         await db.commit()
         
@@ -146,21 +149,39 @@ async def message_feedback(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/session/{session_id}")
-async def end_session(session_id: str):
+async def end_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
     """End a chat session"""
     try:
-        if session_id not in rag_instance.active_sessions:
-            raise HTTPException(
-                status_code=404,
-                detail="Session not found"
+        session = await db.execute(
+            select(ChatSession)
+            .where(
+                ChatSession.id == session_id,
+                ChatSession.is_active == True
             )
+        )
+        session = session.scalar_one_or_none()
         
-        await rag_instance._remove_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Active session not found")
+        
+        # Mark session as inactive
+        session.is_active = False
+        session.ended_at = datetime.utcnow()
+        
+        # Remove from RAG if it exists
+        if session_id in rag_instance.active_sessions:
+            await rag_instance._remove_session(session_id)
+        
+        await db.commit()
         return JSONResponse({
             "message": "Session ended successfully"
         })
     except HTTPException as he:
         raise he
     except Exception as e:
+        await db.rollback()
         logger.error(f"Error ending session: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

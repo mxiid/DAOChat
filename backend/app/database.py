@@ -58,7 +58,8 @@ SessionLocal = sessionmaker(
     expire_on_commit=False
 )
 
-# Create tables using sync engine
+# Drop and recreate all tables
+Base.metadata.drop_all(bind=sync_engine)
 Base.metadata.create_all(bind=sync_engine)
 
 async def get_db():

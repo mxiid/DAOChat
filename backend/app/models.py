@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey, Float, Text, Boolean
+from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey, Boolean, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
@@ -11,9 +11,11 @@ class ChatSession(Base):
     user_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     session_metadata = Column(JSON, nullable=True)
+    is_active = Column(Boolean, default=True)
+    ended_at = Column(DateTime, nullable=True)
     
     # Add relationship
-    messages = relationship("ChatMessage", back_populates="session")
+    messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
     session_feedback = relationship("SessionFeedback", back_populates="session", uselist=False)
 
 class ChatMessage(Base):
@@ -21,12 +23,14 @@ class ChatMessage(Base):
     __table_args__ = {'schema': 'chatbot'}
     
     id = Column(Integer, primary_key=True)
-    session_id = Column(String, ForeignKey('chatbot.chat_sessions.id'))
+    session_id = Column(String, ForeignKey('chatbot.chat_sessions.id', ondelete='CASCADE'))
     role = Column(String)
     content = Column(String)
-    tokens = Column(Integer)
+    tokens = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     message_metadata = Column(JSON, nullable=True)
+    
+    # Add feedback columns
     thumbs_up = Column(Boolean, nullable=True)
     thumbs_down = Column(Boolean, nullable=True)
     feedback_timestamp = Column(DateTime, nullable=True)
