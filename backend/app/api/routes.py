@@ -34,6 +34,13 @@ async def ask_question(
         if not session:
             raise HTTPException(status_code=401, detail="Invalid session")
 
+        # Verify session exists in RAG
+        if session_id not in rag_instance.active_sessions:
+            # Clean up invalid session
+            await db.delete(session)
+            await db.commit()
+            raise HTTPException(status_code=401, detail="Session expired. Please create a new session.")
+
         # Update session last active timestamp
         if session.session_metadata:
             session.session_metadata["last_active"] = datetime.utcnow().isoformat()
@@ -62,30 +69,12 @@ async def ask_question(
 @router.post("/session")
 async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
     try:
-        # Check if there's an existing active session for this IP
+        # Get client IP and user agent
         client_ip = request.client.host
-        existing_session = await db.execute(
-            select(ChatSession)
-            .where(ChatSession.user_id == client_ip)
-            .order_by(ChatSession.created_at.desc())
-        )
-        existing_session = existing_session.scalar_one_or_none()
-
-        # If there's an existing session, try to use it
-        if existing_session:
-            try:
-                # Check if the session is still valid in RAG
-                if existing_session.id in rag_instance.active_sessions:
-                    return {"session_id": existing_session.id, "message": "Using existing session"}
-                else:
-                    # If RAG session doesn't exist, create a new one
-                    await rag_instance._remove_session(existing_session.id)
-            except Exception:
-                pass  # If there's any error, proceed to create new session
-
-        # Create new session
-        session_id = await rag_instance.create_session()
         user_agent = request.headers.get("user-agent", "Unknown")
+
+        # Create new session in RAG first
+        session_id = await rag_instance.create_session()
         
         # Create metadata
         metadata = {
@@ -95,16 +84,40 @@ async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
             "last_active": datetime.utcnow().isoformat()
         }
         
+        # Create new session
         new_session = ChatSession(
             id=session_id,
             user_id=client_ip,
             session_metadata=metadata
         )
         
+        # Clean up old sessions for this IP
+        old_sessions = await db.execute(
+            select(ChatSession)
+            .where(ChatSession.user_id == client_ip)
+        )
+        old_sessions = old_sessions.scalars().all()
+        
+        for old_session in old_sessions:
+            try:
+                # Try to remove from RAG if it exists
+                if old_session.id in rag_instance.active_sessions:
+                    await rag_instance._remove_session(old_session.id)
+                # Delete from database
+                await db.delete(old_session)
+            except Exception as e:
+                logger.warning(f"Error cleaning up old session {old_session.id}: {str(e)}")
+                continue
+        
+        # Add new session
         db.add(new_session)
         await db.commit()
         
-        return {"session_id": session_id, "message": "New session created successfully"}
+        return {
+            "session_id": session_id,
+            "message": "New session created successfully"
+        }
+        
     except Exception as e:
         await db.rollback()
         logger.error(f"Error creating session: {str(e)}", exc_info=True)
