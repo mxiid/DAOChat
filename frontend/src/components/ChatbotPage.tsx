@@ -74,20 +74,22 @@ const useChatbot = () => {
         method: 'POST',
       });
       
-      if (!response.ok) throw new Error('Failed to create session');
+      if (!response.ok) {
+        throw new Error('Failed to create session');
+      }
       
       const data = await response.json();
       setSession({ sessionId: data.session_id });
     } catch (error) {
       console.error('Error creating session:', error);
+      // Retry after 2 seconds
+      setTimeout(initializeSession, 2000);
     }
   }, []);
 
   useEffect(() => {
-    if (!session.sessionId) {
-      initializeSession();
-    }
-  }, [initializeSession, session.sessionId]);
+    initializeSession();
+  }, [initializeSession]);
 
   const handleSendMessage = useCallback(async (message: string) => {
     if (message.trim() === '' || botState !== 'idle' || !session.sessionId) return;
@@ -377,7 +379,6 @@ export default function ChatbotPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const [showFeedback, setShowFeedback] = useState(false);
-  const [sessionId, setSessionId] = useState<string>('');
 
   React.useEffect(() => {
     if (scrollAreaRef.current) {
@@ -397,28 +398,10 @@ export default function ChatbotPage() {
   }
 
   useEffect(() => {
-    // Initialize session and get session ID
-    initializeSession();
-  }, []);
-
-  useEffect(() => {
-    // Show feedback modal after 10 messages
     if (messages.length === 10) {
       setShowFeedback(true);
     }
   }, [messages]);
-
-  const initializeSession = async () => {
-    try {
-      const response = await fetch('/api/session', {
-        method: 'POST',
-      });
-      const data = await response.json();
-      setSessionId(data.session_id);
-    } catch (error) {
-      console.error('Error initializing session:', error);
-    }
-  };
 
   const handleFeedbackSubmit = async (rating: number, feedbackText: string, email: string) => {
     try {
