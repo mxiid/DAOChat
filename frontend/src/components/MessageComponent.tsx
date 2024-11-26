@@ -6,14 +6,26 @@ import { UserIcon } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-const ThumbUpIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="h-5 w-5">
+const ThumbUpIcon = ({ active }: { active?: boolean }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    fill={active ? "currentColor" : "none"} 
+    viewBox="0 0 24 24" 
+    stroke="currentColor" 
+    className={`h-5 w-5 transition-colors ${active ? 'text-green-500' : ''}`}
+  >
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
   </svg>
 );
 
-const ThumbDownIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="h-5 w-5">
+const ThumbDownIcon = ({ active }: { active?: boolean }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    fill={active ? "currentColor" : "none"} 
+    viewBox="0 0 24 24" 
+    stroke="currentColor" 
+    className={`h-5 w-5 transition-colors ${active ? 'text-red-500' : ''}`}
+  >
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018c.163 0 .326.02.485.06L17 4m-7 10v2a2 2 0 002 2h.095c.5 0 .905-.405.905-.905 0-.714.211-1.412.608-2.006L17 13V4m-7 10h2m5 0v2a2 2 0 01-2 2h-2.5" />
   </svg>
 );
@@ -32,7 +44,7 @@ interface MessageComponentProps {
 
 const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode, isStreaming }) => {
   const contentRef = useRef<HTMLDivElement>(null)
-  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null)
+  const [feedback, setFeedback] = useState<'up' | 'down' | null>('up');
 
   useEffect(() => {
     if (contentRef.current && isStreaming) {
@@ -143,20 +155,24 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
           <div className="feedback-buttons">
             <button 
               onClick={() => handleFeedback('up')}
-              className={`feedback-btn ${feedback === 'up' ? 'active' : ''}`}
+              className={`feedback-btn transition-all duration-200 hover:scale-110 ${
+                feedback === 'up' ? 'active bg-green-100 dark:bg-green-900' : ''
+              }`}
               aria-label="Thumbs up"
               title="Thumbs up"
             >
-              <ThumbUpIcon />
+              <ThumbUpIcon active={feedback === 'up'} />
               <span className="sr-only">Thumbs up</span>
             </button>
             <button 
               onClick={() => handleFeedback('down')}
-              className={`feedback-btn ${feedback === 'down' ? 'active' : ''}`}
+              className={`feedback-btn transition-all duration-200 hover:scale-110 ${
+                feedback === 'down' ? 'active bg-red-100 dark:bg-red-900' : ''
+              }`}
               aria-label="Thumbs down"
               title="Thumbs down"
             >
-              <ThumbDownIcon />
+              <ThumbDownIcon active={feedback === 'down'} />
               <span className="sr-only">Thumbs down</span>
             </button>
           </div>

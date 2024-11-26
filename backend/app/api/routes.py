@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
 from ..models import ChatMessage, ChatSession, SessionFeedback
 from datetime import datetime
+import uuid
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -24,15 +25,34 @@ class Question(BaseModel):
     text: str
 
 @router.post("/session")
-async def create_session(request: Request):
-    """Create a new chat session"""
+async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
     try:
-        session_id = await rag_instance.create_session()
-        return JSONResponse({
-            "session_id": session_id,
-            "message": "New session created successfully"
-        })
+        session_id = str(uuid.uuid4())
+        
+        # Get client IP and user agent
+        client_ip = request.client.host
+        user_agent = request.headers.get("user-agent", "Unknown")
+        
+        # Create metadata
+        metadata = {
+            "ip_address": client_ip,
+            "user_agent": user_agent,
+            "created_at": datetime.utcnow().isoformat(),
+            "last_active": datetime.utcnow().isoformat()
+        }
+        
+        new_session = ChatSession(
+            id=session_id,
+            user_id=client_ip,  # Store IP as user_id
+            session_metadata=metadata
+        )
+        
+        db.add(new_session)
+        await db.commit()
+        
+        return {"session_id": session_id}
     except Exception as e:
+        await db.rollback()
         logger.error(f"Error creating session: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -137,20 +157,24 @@ async def end_session(session_id: str):
 @router.post("/message/{message_id}/feedback")
 async def message_feedback(
     message_id: int,
-    thumbs_up: bool = None,
-    thumbs_down: bool = None,
+    feedback: dict,
     db: AsyncSession = Depends(get_db)
 ):
-    message = await db.get(ChatMessage, message_id)
-    if not message:
-        raise HTTPException(status_code=404, detail="Message not found")
-    
-    message.thumbs_up = thumbs_up
-    message.thumbs_down = thumbs_down
-    message.feedback_timestamp = datetime.utcnow()
-    
-    await db.commit()
-    return {"status": "success"}
+    try:
+        message = await db.get(ChatMessage, message_id)
+        if not message:
+            raise HTTPException(status_code=404, detail="Message not found")
+        
+        message.thumbs_up = feedback.get("thumbs_up", True)  # Default to True for thumbs up
+        message.thumbs_down = feedback.get("thumbs_down", False)
+        message.feedback_timestamp = datetime.utcnow()
+        
+        await db.commit()
+        return {"status": "success"}
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error updating message feedback: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/session/{session_id}/feedback")
 async def session_feedback(
