@@ -62,11 +62,29 @@ async def ask_question(
 @router.post("/session")
 async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
     try:
-        # Create session in RAG first
-        session_id = await rag_instance.create_session()
-        
-        # Get client IP and user agent
+        # Check if there's an existing active session for this IP
         client_ip = request.client.host
+        existing_session = await db.execute(
+            select(ChatSession)
+            .where(ChatSession.user_id == client_ip)
+            .order_by(ChatSession.created_at.desc())
+        )
+        existing_session = existing_session.scalar_one_or_none()
+
+        # If there's an existing session, try to use it
+        if existing_session:
+            try:
+                # Check if the session is still valid in RAG
+                if existing_session.id in rag_instance.active_sessions:
+                    return {"session_id": existing_session.id, "message": "Using existing session"}
+                else:
+                    # If RAG session doesn't exist, create a new one
+                    await rag_instance._remove_session(existing_session.id)
+            except Exception:
+                pass  # If there's any error, proceed to create new session
+
+        # Create new session
+        session_id = await rag_instance.create_session()
         user_agent = request.headers.get("user-agent", "Unknown")
         
         # Create metadata
@@ -86,7 +104,7 @@ async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
         db.add(new_session)
         await db.commit()
         
-        return {"session_id": session_id, "message": "Session created successfully"}
+        return {"session_id": session_id, "message": "New session created successfully"}
     except Exception as e:
         await db.rollback()
         logger.error(f"Error creating session: {str(e)}", exc_info=True)
