@@ -12,6 +12,7 @@ from ..database import get_db
 from ..models import ChatMessage, ChatSession, SessionFeedback
 from datetime import datetime
 import uuid
+from sqlalchemy import select
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -43,65 +44,54 @@ async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
         
         new_session = ChatSession(
             id=session_id,
-            user_id=client_ip,  # Store IP as user_id
+            user_id=client_ip,
             session_metadata=metadata
         )
         
         db.add(new_session)
         await db.commit()
         
-        return {"session_id": session_id}
+        return {"session_id": session_id, "message": "Session created successfully"}
     except Exception as e:
         await db.rollback()
         logger.error(f"Error creating session: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/ask")
-async def ask_stream(
-    question: Question,
+async def ask_question(
     request: Request,
-    background_tasks: BackgroundTasks
+    text: dict,
+    db: AsyncSession = Depends(get_db)
 ):
-    """Stream responses to questions using RAG"""
     try:
         session_id = request.headers.get("X-Session-ID")
-        
-        # Validate session
         if not session_id:
-            raise HTTPException(
-                status_code=400,
-                detail="X-Session-ID header is required. Please create a new session."
-            )
-            
-        if session_id not in rag_instance.active_sessions:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid or expired session. Please create a new session."
-            )
+            raise HTTPException(status_code=401, detail="No session ID provided")
 
-        logger.info(f"Processing question for session {session_id}: {question.text}")
-        
-        async def generate():
-            try:
-                # Get the async generator from stream_query
-                generator = await rag_instance.stream_query(question.text, session_id)
-                async for token in generator:
-                    yield f"data: {json.dumps({'token': token})}\n\n"
-            except Exception as e:
-                logger.error(f"Error in stream generation: {str(e)}", exc_info=True)
-                yield f"data: {json.dumps({'error': str(e)})}\n\n"
-        
-        response = StreamingResponse(
-            generate(),
+        # Get session from database
+        session = await db.execute(
+            select(ChatSession).where(ChatSession.id == session_id)
+        )
+        session = session.scalar_one_or_none()
+
+        if not session:
+            raise HTTPException(status_code=401, detail="Invalid session")
+
+        # Update session last active timestamp
+        session.session_metadata["last_active"] = datetime.utcnow().isoformat()
+        await db.commit()
+
+        # Process the message
+        response = await process_message(text["text"], session_id)
+        return StreamingResponse(
+            response,
             media_type="text/event-stream"
         )
-        response.headers["X-Session-ID"] = session_id
-        return response
-        
-    except HTTPException as he:
-        raise he
+
     except Exception as e:
-        logger.error(f"Error processing streaming request: {str(e)}", exc_info=True)
+        logger.error(f"Error processing message: {str(e)}", exc_info=True)
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/suggest_questions", response_model=List[str])
