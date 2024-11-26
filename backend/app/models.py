@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey, Float, Text, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
@@ -14,6 +14,7 @@ class ChatSession(Base):
     
     # Add relationship
     messages = relationship("ChatMessage", back_populates="session")
+    session_feedback = relationship("SessionFeedback", back_populates="session", uselist=False)
 
 class ChatMessage(Base):
     __tablename__ = 'chat_messages'
@@ -26,6 +27,23 @@ class ChatMessage(Base):
     tokens = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
     message_metadata = Column(JSON, nullable=True)
+    thumbs_up = Column(Boolean, nullable=True)
+    thumbs_down = Column(Boolean, nullable=True)
+    feedback_timestamp = Column(DateTime, nullable=True)
     
     # Add relationship
-    session = relationship("ChatSession", back_populates="messages") 
+    session = relationship("ChatSession", back_populates="messages")
+
+class SessionFeedback(Base):
+    __tablename__ = 'session_feedback'
+    __table_args__ = {'schema': 'chatbot'}
+    
+    id = Column(Integer, primary_key=True)
+    session_id = Column(String, ForeignKey('chatbot.chat_sessions.id'))
+    rating = Column(Integer)  # 1-5 rating
+    feedback_text = Column(Text, nullable=True)
+    email = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Add relationship
+    session = relationship("ChatSession", back_populates="session_feedback")

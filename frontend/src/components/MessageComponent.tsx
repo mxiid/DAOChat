@@ -1,22 +1,38 @@
 "use client"
 
-import * as React from 'react'
+import React, { useState } from 'react';
 import { useRef, useEffect } from 'react'
 import { UserIcon } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+const ThumbUpIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="h-5 w-5">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+  </svg>
+);
+
+const ThumbDownIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="h-5 w-5">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018c.163 0 .326.02.485.06L17 4m-7 10v2a2 2 0 002 2h.095c.5 0 .905-.405.905-.905 0-.714.211-1.412.608-2.006L17 13V4m-7 10h2m5 0v2a2 2 0 01-2 2h-2.5" />
+  </svg>
+);
+
 interface Message {
-  role: 'user' | 'bot'
-  content: string
+  role: 'user' | 'bot';
+  content: string;
+  id?: number;
 }
 
-const MessageComponent: React.FC<{
-  message: Message
-  isDarkMode: boolean
-  isStreaming: boolean
-}> = React.memo(({ message, isDarkMode, isStreaming }) => {
+interface MessageComponentProps {
+  message: Message;
+  isDarkMode: boolean;
+  isStreaming: boolean;
+}
+
+const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode, isStreaming }) => {
   const contentRef = useRef<HTMLDivElement>(null)
+  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null)
 
   useEffect(() => {
     if (contentRef.current && isStreaming) {
@@ -29,6 +45,29 @@ const MessageComponent: React.FC<{
       }
     }
   }, [isStreaming, message.content])
+
+  const handleFeedback = async (type: 'up' | 'down') => {
+    if (!message.id) return;
+    
+    try {
+      const response = await fetch(`/api/message/${message.id}/feedback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          thumbs_up: type === 'up',
+          thumbs_down: type === 'down',
+        }),
+      })
+
+      if (response.ok) {
+        setFeedback(type)
+      }
+    } catch (error) {
+      console.error('Error submitting feedback:', error)
+    }
+  }
 
   const renderContent = () => {
     if (message.role === 'user') {
@@ -100,6 +139,28 @@ const MessageComponent: React.FC<{
         >
           {message.content}
         </ReactMarkdown>
+        {message.role === 'bot' && !isStreaming && (
+          <div className="feedback-buttons">
+            <button 
+              onClick={() => handleFeedback('up')}
+              className={`feedback-btn ${feedback === 'up' ? 'active' : ''}`}
+              aria-label="Thumbs up"
+              title="Thumbs up"
+            >
+              <ThumbUpIcon />
+              <span className="sr-only">Thumbs up</span>
+            </button>
+            <button 
+              onClick={() => handleFeedback('down')}
+              className={`feedback-btn ${feedback === 'down' ? 'active' : ''}`}
+              aria-label="Thumbs down"
+              title="Thumbs down"
+            >
+              <ThumbDownIcon />
+              <span className="sr-only">Thumbs down</span>
+            </button>
+          </div>
+        )}
       </div>
     )
   }
@@ -123,6 +184,6 @@ const MessageComponent: React.FC<{
       {message.role === "user" && <UserIcon className="w-5 h-5 sm:w-6 sm:h-6 ml-2 text-[#ADFF2F] flex-shrink-0 mt-1" />}
     </div>
   )
-})
+}
 
 export default MessageComponent

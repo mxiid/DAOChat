@@ -7,6 +7,10 @@ from ..rag import rag_instance
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 import json
+from sqlalchemy.ext.asyncio import AsyncSession
+from ..database import get_db
+from ..models import ChatMessage, ChatSession, SessionFeedback
+from datetime import datetime
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -129,3 +133,76 @@ async def end_session(session_id: str):
     except Exception as e:
         logger.error(f"Error ending session: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/message/{message_id}/feedback")
+async def message_feedback(
+    message_id: int,
+    thumbs_up: bool = None,
+    thumbs_down: bool = None,
+    db: AsyncSession = Depends(get_db)
+):
+    message = await db.get(ChatMessage, message_id)
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+    
+    message.thumbs_up = thumbs_up
+    message.thumbs_down = thumbs_down
+    message.feedback_timestamp = datetime.utcnow()
+    
+    await db.commit()
+    return {"status": "success"}
+
+@router.post("/session/{session_id}/feedback")
+async def session_feedback(
+    session_id: str,
+    rating: int,
+    feedback_text: str = None,
+    email: str = None,
+    db: AsyncSession = Depends(get_db)
+):
+    if not 1 <= rating <= 5:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+    
+    session = await db.get(ChatSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    feedback = SessionFeedback(
+        session_id=session_id,
+        rating=rating,
+        feedback_text=feedback_text,
+        email=email
+    )
+    
+    db.add(feedback)
+    await db.commit()
+    return {"status": "success"}
+
+@router.post("/session/metadata")
+async def update_session_metadata(
+    request: Request,
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    session = await db.get(ChatSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Get client IP
+    client_ip = request.client.host
+    
+    # Get user agent info
+    user_agent = request.headers.get("user-agent", "")
+    
+    # Update session metadata
+    metadata = {
+        "ip_address": client_ip,
+        "user_agent": user_agent,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    
+    session.user_id = client_ip  # Store IP as user_id
+    session.session_metadata = metadata
+    
+    await db.commit()
+    return {"status": "success"}

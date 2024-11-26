@@ -12,6 +12,7 @@ import MessageComponent from './MessageComponent'
 interface Message {
   role: 'user' | 'bot';
   content: string;
+  id?: number;
 }
 
 interface ChatSession {
@@ -173,7 +174,11 @@ const useChatbot = () => {
         }
       }
 
-      const botMessage: Message = { role: 'bot', content: accumulatedMessage };
+      const botMessage: Message = { 
+        role: 'bot', 
+        content: accumulatedMessage,
+        id: Date.now()
+      };
       setMessages(prev => [...prev, botMessage]);
       setBotState('idle');
       setStreamingMessage('');
@@ -183,7 +188,8 @@ const useChatbot = () => {
       const errorMessage = error instanceof Error ? error.message : 'An error occurred';
       const errorBotMessage: Message = { 
         role: 'bot', 
-        content: `I apologize, but I encountered an issue: ${errorMessage}` 
+        content: `I apologize, but I encountered an issue: ${errorMessage}`,
+        id: Date.now()
       };
       setMessages(prev => [...prev, errorBotMessage]);
       setBotState('idle');
@@ -307,6 +313,55 @@ const ErrorMessage = ({ error, isDarkMode }: {
   );
 };
 
+interface FeedbackModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onSubmit: (rating: number, feedback: string, email: string) => void;
+}
+
+const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose, onSubmit }) => {
+    const [rating, setRating] = useState<number>(0);
+    const [feedback, setFeedback] = useState('');
+    const [email, setEmail] = useState('');
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="modal-overlay">
+            <div className="modal-content">
+                <h2>How was your experience?</h2>
+                <div className="rating-container">
+                    {[1, 2, 3, 4, 5].map((value) => (
+                        <button
+                            key={value}
+                            onClick={() => setRating(value)}
+                            className={`rating-btn ${rating === value ? 'active' : ''}`}
+                        >
+                            {/* You can use emoji or custom smiley icons here */}
+                            {value <= rating ? '😊' : '😐'}
+                        </button>
+                    ))}
+                </div>
+                <textarea
+                    placeholder="Your feedback (optional)"
+                    value={feedback}
+                    onChange={(e) => setFeedback(e.target.value)}
+                />
+                <input
+                    type="email"
+                    placeholder="Your email (optional)"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                />
+                <div className="modal-buttons">
+                    <button onClick={() => onSubmit(rating, feedback, email)}>Submit</button>
+                    <button onClick={onClose}>Skip</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 export default function ChatbotPage() {
   const { isDarkMode, toggleTheme } = useTheme()
   const { 
@@ -321,6 +376,8 @@ export default function ChatbotPage() {
   } = useChatbot()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [sessionId, setSessionId] = useState<string>('');
 
   React.useEffect(() => {
     if (scrollAreaRef.current) {
@@ -338,6 +395,60 @@ export default function ChatbotPage() {
       handleSendMessage(input)
     }
   }
+
+  useEffect(() => {
+    // Initialize session and get session ID
+    initializeSession();
+  }, []);
+
+  useEffect(() => {
+    // Show feedback modal after 10 messages
+    if (messages.length === 10) {
+      setShowFeedback(true);
+    }
+  }, [messages]);
+
+  const initializeSession = async () => {
+    try {
+      const response = await fetch('/api/session/start', {
+        method: 'POST',
+      });
+      const data = await response.json();
+      setSessionId(data.session_id);
+      
+      // Update session metadata
+      await fetch('/api/session/metadata', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_id: data.session_id,
+        }),
+      });
+    } catch (error) {
+      console.error('Error initializing session:', error);
+    }
+  };
+
+  const handleFeedbackSubmit = async (rating: number, feedbackText: string, email: string) => {
+    try {
+      await fetch(`/api/session/${sessionId}/feedback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          rating,
+          feedback_text: feedbackText,
+          email,
+        }),
+      });
+      setShowFeedback(false);
+    } catch (error) {
+      console.error('Error submitting feedback:', error);
+    }
+  };
 
   return (
     <div className={`flex flex-col min-h-[100dvh] ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-black'}`}>
@@ -404,9 +515,9 @@ export default function ChatbotPage() {
           >
             <div className="px-4 py-1 max-w-3xl mx-auto">
               {messages.map((message, index) => (
-                <MessageComponent 
-                  key={index} 
-                  message={message} 
+                <MessageComponent
+                  key={index}
+                  message={message}
                   isDarkMode={isDarkMode}
                   isStreaming={false}
                 />
@@ -459,6 +570,11 @@ export default function ChatbotPage() {
           </div>
         </div>
       </main>
+      <FeedbackModal
+        isOpen={showFeedback}
+        onClose={() => setShowFeedback(false)}
+        onSubmit={handleFeedbackSubmit}
+      />
     </div>
   )
 }
