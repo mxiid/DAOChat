@@ -78,20 +78,17 @@ async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
         client_ip = request.client.host
         user_agent = request.headers.get("user-agent", "Unknown")
 
-        # Mark any existing active sessions as inactive
-        existing_sessions = await db.execute(
-            select(ChatSession)
-            .where(
-                ChatSession.user_id == client_ip,
-                ChatSession.is_active == True
-            )
+        # First, deactivate any existing active sessions
+        await db.execute(
+            text("""
+                UPDATE chatbot.chat_sessions 
+                SET is_active = false, 
+                    ended_at = NOW() 
+                WHERE user_id = :user_id 
+                AND is_active = true
+            """),
+            {"user_id": client_ip}
         )
-        for old_session in existing_sessions.scalars():
-            old_session.is_active = False
-            old_session.ended_at = datetime.utcnow()
-            if old_session.id in rag_instance.active_sessions:
-                await rag_instance._remove_session(old_session.id)
-
         await db.commit()
 
         # Create new session in RAG first
@@ -124,6 +121,14 @@ async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
     except Exception as e:
         await db.rollback()
         logger.error(f"Error creating session: {str(e)}", exc_info=True)
+        
+        # If we failed after creating RAG session, clean it up
+        if 'session_id' in locals():
+            try:
+                await rag_instance._remove_session(session_id)
+            except Exception:
+                pass
+        
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/message/{message_id}/feedback")
