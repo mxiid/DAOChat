@@ -62,11 +62,18 @@ const useChatbot = () => {
   const [botState, setBotState] = useState<'idle' | 'thinking' | 'streaming' | 'rate-limited' | 'error'>('idle');
   const [streamingMessage, setStreamingMessage] = useState('');
   const [session, setSession] = useState<ChatSession>({ sessionId: null });
+  const [showFeedback, setShowFeedback] = useState(false);
   const [errorDetails, setErrorDetails] = useState<{
     type: 'rate_limit' | 'server_error' | 'quota_exceeded' | 'timeout' | 'unknown';
     message: string;
     retryAfter?: number;
   } | null>(null);
+
+  useEffect(() => {
+    if (messages.length === 10) {
+      setShowFeedback(true);
+    }
+  }, [messages]);
 
   const initializeSession = useCallback(async () => {
     try {
@@ -216,15 +223,39 @@ const useChatbot = () => {
     };
   }, [cleanup]);
 
-  return { 
-    messages, 
-    input, 
-    setInput, 
-    botState, 
-    streamingMessage, 
+  const handleFeedbackSubmit = async (rating: number, feedbackText: string, email: string) => {
+    if (!session.sessionId) return;
+    
+    try {
+      await fetch(`/api/session/${session.sessionId}/feedback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          rating,
+          feedback_text: feedbackText,
+          email,
+        }),
+      });
+      setShowFeedback(false);
+    } catch (error) {
+      console.error('Error submitting feedback:', error);
+    }
+  };
+
+  return {
+    messages,
+    input,
+    setInput,
+    botState,
+    streamingMessage,
     handleSendMessage,
     sessionReady: !!session.sessionId,
-    errorDetails
+    errorDetails,
+    handleFeedbackSubmit,
+    showFeedback,
+    setShowFeedback
   };
 }
 
@@ -374,11 +405,13 @@ export default function ChatbotPage() {
     streamingMessage, 
     handleSendMessage,
     sessionReady,
-    errorDetails
+    errorDetails,
+    handleFeedbackSubmit,
+    showFeedback,
+    setShowFeedback
   } = useChatbot()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
-  const [showFeedback, setShowFeedback] = useState(false);
 
   React.useEffect(() => {
     if (scrollAreaRef.current) {
@@ -396,31 +429,6 @@ export default function ChatbotPage() {
       handleSendMessage(input)
     }
   }
-
-  useEffect(() => {
-    if (messages.length === 10) {
-      setShowFeedback(true);
-    }
-  }, [messages]);
-
-  const handleFeedbackSubmit = async (rating: number, feedbackText: string, email: string) => {
-    try {
-      await fetch(`/api/session/${sessionId}/feedback`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          rating,
-          feedback_text: feedbackText,
-          email,
-        }),
-      });
-      setShowFeedback(false);
-    } catch (error) {
-      console.error('Error submitting feedback:', error);
-    }
-  };
 
   return (
     <div className={`flex flex-col min-h-[100dvh] ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white text-black'}`}>
