@@ -24,6 +24,20 @@ async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
         # Create new session in RAG first
         session_id = await rag_instance.create_session()
         
+        # Check if session already exists
+        existing_session = await db.execute(
+            text("""
+                SELECT id FROM chatbot.chat_sessions 
+                WHERE id = :session_id
+            """),
+            {"session_id": session_id}
+        )
+        if existing_session.scalar_one_or_none():
+            # If session exists, clean up RAG session and try again
+            await rag_instance._remove_session(session_id)
+            # Recursive call to try again with a new session ID
+            return await create_session(request, db)
+        
         # Create metadata
         metadata = {
             "ip_address": client_ip,
@@ -32,32 +46,37 @@ async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
             "last_active": datetime.utcnow().isoformat()
         }
 
-        # First, deactivate any existing active sessions
-        try:
-            await db.execute(
-                text("""
-                    UPDATE chatbot.chat_sessions 
-                    SET is_active = false, 
-                        ended_at = NOW() 
-                    WHERE user_id = :user_id 
-                    AND is_active = true
-                """),
-                {"user_id": client_ip}
-            )
-            await db.commit()
-        except Exception as e:
-            logger.warning(f"Error deactivating old sessions: {str(e)}")
-            # Continue even if this fails
-        
-        # Create new session
-        new_session = ChatSession(
-            id=session_id,
-            user_id=client_ip,
-            session_metadata=metadata,
-            is_active=True
+        # Deactivate old sessions
+        await db.execute(
+            text("""
+                UPDATE chatbot.chat_sessions 
+                SET is_active = false, 
+                    ended_at = NOW() 
+                WHERE user_id = :user_id 
+                AND is_active = true
+                AND id != :session_id
+            """),
+            {
+                "user_id": client_ip,
+                "session_id": session_id
+            }
         )
         
-        db.add(new_session)
+        # Create new session
+        await db.execute(
+            text("""
+                INSERT INTO chatbot.chat_sessions 
+                (id, user_id, created_at, session_metadata, is_active, ended_at)
+                VALUES 
+                (:id, :user_id, NOW(), :metadata, true, NULL)
+            """),
+            {
+                "id": session_id,
+                "user_id": client_ip,
+                "metadata": json.dumps(metadata)
+            }
+        )
+        
         await db.commit()
         
         return {
