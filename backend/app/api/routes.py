@@ -16,86 +16,96 @@ router = APIRouter()
 
 @router.post("/session")
 async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
-    try:
-        # Get client IP and user agent
-        client_ip = request.client.host
-        user_agent = request.headers.get("user-agent", "Unknown")
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            # Get client IP and user agent
+            client_ip = request.client.host
+            user_agent = request.headers.get("user-agent", "Unknown")
 
-        # Create new session in RAG first
-        session_id = await rag_instance.create_session()
-        
-        # Check if session already exists
-        existing_session = await db.execute(
-            text("""
-                SELECT id FROM chatbot.chat_sessions 
-                WHERE id = :session_id
-            """),
-            {"session_id": session_id}
-        )
-        if existing_session.scalar_one_or_none():
-            # If session exists, clean up RAG session and try again
-            await rag_instance._remove_session(session_id)
-            # Recursive call to try again with a new session ID
-            return await create_session(request, db)
-        
-        # Create metadata
-        metadata = {
-            "ip_address": client_ip,
-            "user_agent": user_agent,
-            "created_at": datetime.utcnow().isoformat(),
-            "last_active": datetime.utcnow().isoformat()
-        }
-
-        # Deactivate old sessions
-        await db.execute(
-            text("""
-                UPDATE chatbot.chat_sessions 
-                SET is_active = false, 
-                    ended_at = NOW() 
-                WHERE user_id = :user_id 
-                AND is_active = true
-                AND id != :session_id
-            """),
-            {
-                "user_id": client_ip,
-                "session_id": session_id
-            }
-        )
-        
-        # Create new session
-        await db.execute(
-            text("""
-                INSERT INTO chatbot.chat_sessions 
-                (id, user_id, created_at, session_metadata, is_active, ended_at)
-                VALUES 
-                (:id, :user_id, NOW(), :metadata, true, NULL)
-            """),
-            {
-                "id": session_id,
-                "user_id": client_ip,
-                "metadata": json.dumps(metadata)
-            }
-        )
-        
-        await db.commit()
-        
-        return {
-            "session_id": session_id,
-            "message": "New session created successfully"
-        }
-        
-    except Exception as e:
-        await db.rollback()
-        logger.error(f"Error creating session: {str(e)}", exc_info=True)
-        
-        # If we failed after creating RAG session, clean it up
-        if 'session_id' in locals():
-            try:
+            # Create new session in RAG first
+            session_id = await rag_instance.create_session()
+            
+            # Check if session already exists
+            existing_session = await db.execute(
+                text("""
+                    SELECT id FROM chatbot.chat_sessions 
+                    WHERE id = :session_id
+                """),
+                {"session_id": session_id}
+            )
+            
+            if existing_session.scalar_one_or_none():
+                # If session exists, clean up RAG session and try again
                 await rag_instance._remove_session(session_id)
-            except Exception:
-                pass
-        
-        raise HTTPException(status_code=500, detail=str(e))
+                retry_count += 1
+                continue
+            
+            # Create metadata
+            metadata = {
+                "ip_address": client_ip,
+                "user_agent": user_agent,
+                "created_at": datetime.utcnow().isoformat(),
+                "last_active": datetime.utcnow().isoformat()
+            }
+
+            # Deactivate old sessions
+            await db.execute(
+                text("""
+                    UPDATE chatbot.chat_sessions 
+                    SET is_active = false, 
+                        ended_at = NOW() 
+                    WHERE user_id = :user_id 
+                    AND is_active = true
+                    AND id != :session_id
+                """),
+                {
+                    "user_id": client_ip,
+                    "session_id": session_id
+                }
+            )
+            
+            # Create new session
+            await db.execute(
+                text("""
+                    INSERT INTO chatbot.chat_sessions 
+                    (id, user_id, created_at, session_metadata, is_active, ended_at)
+                    VALUES 
+                    (:id, :user_id, NOW(), :metadata, true, NULL)
+                """),
+                {
+                    "id": session_id,
+                    "user_id": client_ip,
+                    "metadata": json.dumps(metadata)
+                }
+            )
+            
+            await db.commit()
+            
+            return {
+                "session_id": session_id,
+                "message": "New session created successfully"
+            }
+            
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Error creating session (attempt {retry_count + 1}): {str(e)}", exc_info=True)
+            
+            # If we failed after creating RAG session, clean it up
+            if 'session_id' in locals():
+                try:
+                    await rag_instance._remove_session(session_id)
+                except Exception:
+                    pass
+            
+            retry_count += 1
+            if retry_count >= max_retries:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to create session after {max_retries} attempts: {str(e)}"
+                )
 
 @router.post("/ask")
 async def ask_question(
