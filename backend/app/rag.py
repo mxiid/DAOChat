@@ -416,7 +416,7 @@ Please provide a clear, specific answer focusing on the relevant details.""")
                 await asyncio.sleep(60)  # Wait a minute before retrying
 
     async def cleanup_old_sessions(self):
-        """Clean up old session memories"""
+        """Clean up old session memories but keep database records"""
         current_time = datetime.now().timestamp()
         sessions_to_remove = []
 
@@ -427,17 +427,17 @@ Please provide a clear, specific answer focusing on the relevant details.""")
 
             for session_id in sessions_to_remove:
                 await self._remove_session(session_id)
-                logger.info(f"Cleaned up session: {session_id}")
+                logger.info(f"Cleaned up session memory: {session_id}")
 
     async def _remove_session(self, session_id: str):
-        """Safely remove a session and its associated data"""
+        """Safely remove a session from memory only"""
         try:
             self.active_sessions.discard(session_id)
             self.memory_pools.pop(session_id, None)
             self.last_access.pop(session_id, None)
-            logger.info(f"Removed session: {session_id}")
+            logger.info(f"Removed session from memory: {session_id}")
         except Exception as e:
-            logger.error(f"Error removing session {session_id}: {str(e)}")
+            logger.error(f"Error removing session {session_id} from memory: {str(e)}")
 
     def _extract_metadata(self, text: str) -> dict:
         """Extract metadata from text content"""
