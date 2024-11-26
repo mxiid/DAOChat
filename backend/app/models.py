@@ -13,6 +13,7 @@ class ChatSession(Base):
     session_metadata = Column(JSON, nullable=True)
     is_active = Column(Boolean, default=True)
     ended_at = Column(DateTime, nullable=True)
+    last_activity = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Add relationship
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")

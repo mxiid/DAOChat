@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from ..database import get_db
-from ..models import ChatMessage, ChatSession, SessionFeedback
+from ..models import ChatMessage, ChatSession
 from datetime import datetime
 import uuid
 import json
@@ -14,98 +14,58 @@ from ..rag import rag_instance
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+def get_client_info(request: Request) -> dict:
+    """Extract client information from request"""
+    headers = dict(request.headers)
+    return {
+        "ip_address": request.client.host,
+        "user_agent": headers.get("user-agent", "Unknown"),
+        "accept_language": headers.get("accept-language", "Unknown"),
+        "platform": headers.get("sec-ch-ua-platform", "Unknown").strip('"'),
+        "device": {
+            "mobile": headers.get("sec-ch-ua-mobile", "Unknown"),
+            "platform": headers.get("sec-ch-ua-platform", "Unknown").strip('"'),
+        },
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
 @router.post("/session")
 async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
-    max_retries = 3
-    retry_count = 0
-    
-    while retry_count < max_retries:
-        try:
-            # Get client IP and user agent
-            client_ip = request.client.host
-            user_agent = request.headers.get("user-agent", "Unknown")
-
-            # Create new session in RAG first
-            session_id = await rag_instance.create_session()
-            
-            # Check if session already exists
-            existing_session = await db.execute(
-                text("""
-                    SELECT id FROM chatbot.chat_sessions 
-                    WHERE id = :session_id
-                """),
-                {"session_id": session_id}
-            )
-            
-            if existing_session.scalar_one_or_none():
-                # If session exists, clean up RAG session and try again
+    try:
+        # Get client info
+        client_info = get_client_info(request)
+        
+        # Create new session in RAG first
+        session_id = await rag_instance.create_session()
+        
+        # Create new session
+        new_session = ChatSession(
+            id=session_id,
+            user_id=client_info["ip_address"],
+            session_metadata=client_info,
+            is_active=True
+        )
+        
+        db.add(new_session)
+        await db.commit()
+        
+        return {
+            "session_id": session_id,
+            "message": "New session created successfully"
+        }
+        
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error creating session: {str(e)}", exc_info=True)
+        
+        # If we failed after creating RAG session, clean it up
+        if 'session_id' in locals():
+            try:
                 await rag_instance._remove_session(session_id)
-                retry_count += 1
-                continue
-            
-            # Create metadata
-            metadata = {
-                "ip_address": client_ip,
-                "user_agent": user_agent,
-                "created_at": datetime.utcnow().isoformat(),
-                "last_active": datetime.utcnow().isoformat()
-            }
-
-            # Deactivate old sessions
-            await db.execute(
-                text("""
-                    UPDATE chatbot.chat_sessions 
-                    SET is_active = false, 
-                        ended_at = NOW() 
-                    WHERE user_id = :user_id 
-                    AND is_active = true
-                    AND id != :session_id
-                """),
-                {
-                    "user_id": client_ip,
-                    "session_id": session_id
-                }
-            )
-            
-            # Create new session
-            await db.execute(
-                text("""
-                    INSERT INTO chatbot.chat_sessions 
-                    (id, user_id, created_at, session_metadata, is_active, ended_at)
-                    VALUES 
-                    (:id, :user_id, NOW(), :metadata, true, NULL)
-                """),
-                {
-                    "id": session_id,
-                    "user_id": client_ip,
-                    "metadata": json.dumps(metadata)
-                }
-            )
-            
-            await db.commit()
-            
-            return {
-                "session_id": session_id,
-                "message": "New session created successfully"
-            }
-            
-        except Exception as e:
-            await db.rollback()
-            logger.error(f"Error creating session (attempt {retry_count + 1}): {str(e)}", exc_info=True)
-            
-            # If we failed after creating RAG session, clean it up
-            if 'session_id' in locals():
-                try:
-                    await rag_instance._remove_session(session_id)
-                except Exception:
-                    pass
-            
-            retry_count += 1
-            if retry_count >= max_retries:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to create session after {max_retries} attempts: {str(e)}"
-                )
+            except Exception:
+                pass
+        
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/ask")
 async def ask_question(
@@ -139,16 +99,43 @@ async def ask_question(
             await db.commit()
             raise HTTPException(status_code=401, detail="Session expired. Please create a new session.")
 
-        # Update session last active timestamp
-        if session.session_metadata:
-            session.session_metadata["last_active"] = datetime.utcnow().isoformat()
+        # Update session metadata with latest client info
+        session.session_metadata.update(get_client_info(request))
+        await db.commit()
+
+        # Create message record
+        user_message = ChatMessage(
+            session_id=session_id,
+            role='user',
+            content=text["text"],
+            message_metadata={
+                "timestamp": datetime.utcnow().isoformat(),
+                "client_info": get_client_info(request)
+            }
+        )
+        db.add(user_message)
         await db.commit()
 
         # Get the response from RAG instance
         async def generate():
+            bot_response = ""
             try:
                 async for token in await rag_instance.stream_query(text["text"], session_id):
+                    bot_response += token
                     yield f"data: {json.dumps({'token': token})}\n\n"
+                
+                # Save bot message after complete response
+                bot_message = ChatMessage(
+                    session_id=session_id,
+                    role='bot',
+                    content=bot_response,
+                    message_metadata={
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                )
+                db.add(bot_message)
+                await db.commit()
+                
             except Exception as e:
                 logger.error(f"Error in stream generation: {str(e)}", exc_info=True)
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -175,7 +162,7 @@ async def message_feedback(
         if not message:
             raise HTTPException(status_code=404, detail="Message not found")
         
-        message.thumbs_up = feedback.get("thumbs_up", True)
+        message.thumbs_up = feedback.get("thumbs_up", False)
         message.thumbs_down = feedback.get("thumbs_down", False)
         message.feedback_timestamp = datetime.utcnow()
         
