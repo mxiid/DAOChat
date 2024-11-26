@@ -104,30 +104,19 @@ async def ask_question(
 
         # Update session metadata with latest client info
         session.session_metadata.update(get_client_info(request))
-        await db.commit()
-
-        # Create message record
-        user_message = ChatMessage(
-            session_id=session_id,
-            role='user',
-            content=text["text"],
-            message_metadata={
-                "timestamp": datetime.utcnow().isoformat(),
-                "client_info": get_client_info(request)
-            }
-        )
-        db.add(user_message)
+        session.last_activity = datetime.utcnow()
         await db.commit()
 
         # Get the response from RAG instance
         async def generate():
             bot_response = ""
+            bot_message_id = None
             try:
                 async for token in await rag_instance.stream_query(text["text"], session_id):
                     bot_response += token
                     yield f"data: {json.dumps({'token': token})}\n\n"
                 
-                # Save bot message after complete response
+                # Create bot message after complete response
                 bot_message = ChatMessage(
                     session_id=session_id,
                     role='bot',
@@ -138,6 +127,11 @@ async def ask_question(
                 )
                 db.add(bot_message)
                 await db.commit()
+                await db.refresh(bot_message)
+                bot_message_id = bot_message.id
+                
+                # Send message ID in a special message
+                yield f"data: {json.dumps({'message_id': bot_message_id})}\n\n"
                 
             except Exception as e:
                 logger.error(f"Error in stream generation: {str(e)}", exc_info=True)

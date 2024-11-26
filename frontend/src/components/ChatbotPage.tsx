@@ -152,12 +152,13 @@ const useChatbot = () => {
         
         throw new Error(errorData.error?.message || 'An error occurred');
       }
-      
+
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No reader available');
 
       const decoder = new TextDecoder();
       let accumulatedMessage = '';
+      let messageId: number | undefined;
 
       setBotState('streaming');
 
@@ -175,6 +176,8 @@ const useChatbot = () => {
               if (data.token) {
                 accumulatedMessage += data.token;
                 setStreamingMessage(accumulatedMessage);
+              } else if (data.message_id) {
+                messageId = data.message_id;
               }
             } catch (e) {
               console.error('Error parsing SSE data:', e);
@@ -186,7 +189,7 @@ const useChatbot = () => {
       const botMessage: Message = { 
         role: 'bot', 
         content: accumulatedMessage,
-        id: Date.now()
+        id: messageId
       };
       setMessages(prev => [...prev, botMessage]);
       setBotState('idle');
@@ -197,8 +200,7 @@ const useChatbot = () => {
       const errorMessage = error instanceof Error ? error.message : 'An error occurred';
       const errorBotMessage: Message = { 
         role: 'bot', 
-        content: `I apologize, but I encountered an issue: ${errorMessage}`,
-        id: Date.now()
+        content: `I apologize, but I encountered an issue: ${errorMessage}`
       };
       setMessages(prev => [...prev, errorBotMessage]);
       setBotState('idle');

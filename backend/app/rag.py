@@ -386,7 +386,7 @@ Please provide a clear, specific answer focusing on the relevant details.""")
 
             async with self.db_session() as session:
                 try:
-                    # Verify session exists
+                    # Verify session exists and update last activity
                     chat_session = await session.execute(
                         select(ChatSession).where(ChatSession.id == session_id)
                     )
@@ -396,23 +396,8 @@ Please provide a clear, specific answer focusing on the relevant details.""")
                         logger.error(f"Session {session_id} not found in database")
                         raise ValueError("Invalid session ID")
 
-                    # Create message objects
-                    user_message = ChatMessage(
-                        session_id=session_id,
-                        role='user',
-                        content=question,
-                        tokens=len(question.split())
-                    )
-                    bot_message = ChatMessage(
-                        session_id=session_id,
-                        role='bot',
-                        content=full_response,
-                        tokens=len(full_response.split())
-                    )
-
-                    # Add to session and commit
-                    session.add(user_message)
-                    session.add(bot_message)
+                    # Update session last activity
+                    chat_session.last_activity = datetime.utcnow()
                     await session.commit()
                     
                 except Exception as e:
