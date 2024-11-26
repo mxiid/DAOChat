@@ -87,7 +87,7 @@ const useChatbot = () => {
     if (!session.sessionId) {
       initializeSession();
     }
-  }, [initializeSession]);
+  }, [initializeSession, session.sessionId]);
 
   const handleSendMessage = useCallback(async (message: string) => {
     if (message.trim() === '' || botState !== 'idle' || !session.sessionId) return;
@@ -410,22 +410,11 @@ export default function ChatbotPage() {
 
   const initializeSession = async () => {
     try {
-      const response = await fetch('/api/session/start', {
+      const response = await fetch('/api/session', {
         method: 'POST',
       });
       const data = await response.json();
       setSessionId(data.session_id);
-      
-      // Update session metadata
-      await fetch('/api/session/metadata', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          session_id: data.session_id,
-        }),
-      });
     } catch (error) {
       console.error('Error initializing session:', error);
     }
