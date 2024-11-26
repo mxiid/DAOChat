@@ -277,7 +277,7 @@ const ThinkingIndicator = ({
   state: 'thinking' | 'streaming' | 'idle' | 'error' | 'rate-limited', 
   isDarkMode: boolean 
 }) => {
-  if (state === 'idle' || state === 'error' || state === 'rate-limited') return null;
+  if (state === 'idle' || state === 'error' || state === 'rate-limited' || state === 'streaming') return null;
 
   return (
     <div className="flex items-center space-x-2 mb-4">
@@ -289,7 +289,7 @@ const ThinkingIndicator = ({
         />
       </div>
       <div className="flex items-center space-x-2 text-gray-400">
-        <span className="text-sm">{state === 'thinking' ? 'Thinking' : 'Streaming'}</span>
+        <span className="text-sm">Thinking</span>
         <span className="flex space-x-1">
           <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
           <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>

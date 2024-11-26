@@ -150,7 +150,7 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
   };
 
   return (
-    <div className={`flex flex-col mb-4 ${message.role === "user" ? "items-end" : "items-start"}`}>
+    <div className={`flex flex-col mb-2 ${message.role === "user" ? "items-end" : "items-start"}`}>
       <div className="flex items-start">
         {message.role === "bot" && (
           <div className="w-6 h-6 mr-2 flex-shrink-0 mt-1">
@@ -169,7 +169,7 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
         {message.role === "user" && <UserIcon className="w-5 h-5 sm:w-6 sm:h-6 ml-2 text-[#ADFF2F] flex-shrink-0 mt-1" />}
       </div>
       {message.role === 'bot' && !isStreaming && (
-        <div className="flex items-center gap-2 mt-2 ml-8">
+        <div className="flex items-center gap-2 mt-1 ml-8">
           <button 
             onClick={() => handleFeedback('up')}
             className="feedback-btn p-1 rounded-full transition-all duration-200 hover:bg-gray-100 dark:hover:bg-gray-800"
