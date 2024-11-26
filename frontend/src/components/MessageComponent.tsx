@@ -12,9 +12,7 @@ const ThumbUpIcon = ({ active }: { active?: boolean }) => (
     fill={active ? "currentColor" : "none"} 
     viewBox="0 0 24 24" 
     stroke="currentColor" 
-    className={`h-5 w-5 transition-all duration-200 ${
-      active ? 'text-green-500 transform scale-110' : 'text-gray-500 hover:text-green-500'
-    }`}
+    className="h-5 w-5 transition-transform duration-200"
   >
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
   </svg>
@@ -26,9 +24,7 @@ const ThumbDownIcon = ({ active }: { active?: boolean }) => (
     fill={active ? "currentColor" : "none"} 
     viewBox="0 0 24 24" 
     stroke="currentColor" 
-    className={`h-5 w-5 transition-all duration-200 ${
-      active ? 'text-red-500 transform scale-110' : 'text-gray-500 hover:text-red-500'
-    }`}
+    className="h-5 w-5 transition-transform duration-200"
   >
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018c.163 0 .326.02.485.06L17 4m-7 10v2a2 2 0 002 2h.095c.5 0 .905-.405.905-.905 0-.714.211-1.412.608-2.006L17 13V4m-7 10h2m5 0v2a2 2 0 01-2 2h-2.5" />
   </svg>
@@ -48,7 +44,7 @@ interface MessageComponentProps {
 
 const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode, isStreaming }) => {
   const contentRef = useRef<HTMLDivElement>(null)
-  const [feedback, setFeedback] = useState<'up' | 'down' | null>('up');
+  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
 
   useEffect(() => {
     if (contentRef.current && isStreaming) {
@@ -75,15 +71,15 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
           thumbs_up: type === 'up',
           thumbs_down: type === 'down',
         }),
-      })
+      });
 
       if (response.ok) {
-        setFeedback(type)
+        setFeedback(type === feedback ? null : type); // Toggle feedback if clicking the same button
       }
     } catch (error) {
-      console.error('Error submitting feedback:', error)
+      console.error('Error submitting feedback:', error);
     }
-  }
+  };
 
   const renderContent = () => {
     if (message.role === 'user') {
@@ -160,10 +156,7 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
             <button 
               onClick={() => handleFeedback('up')}
               className={`feedback-btn p-2 rounded-full transition-all duration-200 
-                ${feedback === 'up' 
-                  ? 'bg-green-100 dark:bg-green-900/30 ring-2 ring-green-500' 
-                  : 'hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
+                hover:bg-gray-100 dark:hover:bg-gray-800`}
               aria-label="Thumbs up"
               title="Thumbs up"
             >
@@ -173,10 +166,7 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
             <button 
               onClick={() => handleFeedback('down')}
               className={`feedback-btn p-2 rounded-full transition-all duration-200 
-                ${feedback === 'down' 
-                  ? 'bg-red-100 dark:bg-red-900/30 ring-2 ring-red-500' 
-                  : 'hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
+                hover:bg-gray-100 dark:hover:bg-gray-800`}
               aria-label="Thumbs down"
               title="Thumbs down"
             >

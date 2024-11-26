@@ -13,6 +13,8 @@ from ..models import ChatMessage, ChatSession, SessionFeedback
 from datetime import datetime
 import uuid
 from sqlalchemy import select
+import asyncio
+from typing import AsyncGenerator
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +26,13 @@ router = APIRouter()
 
 class Question(BaseModel):
     text: str
+
+async def stream_response(text: str) -> AsyncGenerator[str, None]:
+    # Simulate streaming response
+    words = text.split()
+    for word in words:
+        yield f"data: {json.dumps({'token': word + ' '})}\n\n"
+        await asyncio.sleep(0.05)
 
 @router.post("/session")
 async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
@@ -78,11 +87,13 @@ async def ask_question(
             raise HTTPException(status_code=401, detail="Invalid session")
 
         # Update session last active timestamp
-        session.session_metadata["last_active"] = datetime.utcnow().isoformat()
+        if session.session_metadata:
+            session.session_metadata["last_active"] = datetime.utcnow().isoformat()
         await db.commit()
 
-        # Process the message
-        response = await process_message(text["text"], session_id)
+        # For now, return a simple streaming response
+        # Replace this with your actual chat processing logic
+        response = stream_response("This is a test response from the chatbot.")
         return StreamingResponse(
             response,
             media_type="text/event-stream"
@@ -189,34 +200,5 @@ async def session_feedback(
     )
     
     db.add(feedback)
-    await db.commit()
-    return {"status": "success"}
-
-@router.post("/session/metadata")
-async def update_session_metadata(
-    request: Request,
-    session_id: str,
-    db: AsyncSession = Depends(get_db)
-):
-    session = await db.get(ChatSession, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    # Get client IP
-    client_ip = request.client.host
-    
-    # Get user agent info
-    user_agent = request.headers.get("user-agent", "")
-    
-    # Update session metadata
-    metadata = {
-        "ip_address": client_ip,
-        "user_agent": user_agent,
-        "timestamp": datetime.utcnow().isoformat()
-    }
-    
-    session.user_id = client_ip  # Store IP as user_id
-    session.session_metadata = metadata
-    
     await db.commit()
     return {"status": "success"}
