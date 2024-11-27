@@ -105,13 +105,13 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
               <strong {...props} className={`font-bold ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             h1: ({ node, ...props }) => (
-              <h1 {...props} className={`text-2xl font-bold mb-6 mt-8 ${isDarkMode ? "text-white" : "text-black"}`} />
+              <h1 {...props} className={`text-2xl font-bold mb-4 mt-2 ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             h2: ({ node, ...props }) => (
-              <h2 {...props} className={`text-xl font-semibold mb-4 mt-6 ${isDarkMode ? "text-white" : "text-black"}`} />
+              <h2 {...props} className={`text-xl font-semibold mb-3 mt-2 ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             h3: ({ node, ...props }) => (
-              <h3 {...props} className={`text-lg font-medium mb-3 mt-5 ${isDarkMode ? "text-white" : "text-black"}`} />
+              <h3 {...props} className={`text-lg font-medium mb-2 mt-2 ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             code: ({ node, className, children, ...props }) => {
               const match = /language-(\w+)/.exec(className || "");
@@ -160,7 +160,7 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
 
   return (
     <div className={`flex flex-col mb-2 ${message.role === "user" ? "items-end" : "items-start"}`}>
-      <div className="flex items-start">
+      <div className="flex items-start max-w-full">
         {message.role === "bot" && (
           <div className="w-6 h-6 mr-2 flex-shrink-0 mt-1">
             <img 
@@ -170,9 +170,7 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
             />
           </div>
         )}
-        <div className={`rounded-lg p-2 sm:p-3 max-w-[80%] ${
-          message.role === "user" ? "bg-[#ADFF2F] text-black" : isDarkMode ? "bg-gray-700" : "bg-gray-200"
-        }`}>
+        <div className={`rounded-lg p-2 sm:p-3 ${message.role === "user" ? "bg-[#ADFF2F] text-black min-w-[60px]" : isDarkMode ? "bg-gray-700" : "bg-gray-200"}`}>
           {renderContent()}
         </div>
         {message.role === "user" && <UserIcon className="w-5 h-5 sm:w-6 sm:h-6 ml-2 text-[#ADFF2F] flex-shrink-0 mt-1" />}
