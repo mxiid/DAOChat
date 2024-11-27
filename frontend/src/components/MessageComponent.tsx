@@ -84,34 +84,34 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
       <div ref={contentRef} className="overflow-hidden">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
-          className={`prose prose-sm max-w-none break-words whitespace-pre-wrap ${isDarkMode ? "prose-invert" : ""}`}
+          className="markdown-content"
           components={{
             p: ({ node, ...props }) => (
-              <p {...props} className={`whitespace-pre-wrap mb-4 text-sm sm:text-base leading-relaxed ${isDarkMode ? "text-white" : "text-black"}`} />
+              <p {...props} className={`mb-4 text-sm sm:text-base leading-relaxed ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             a: ({ node, ...props }) => (
               <a {...props} className="text-blue-500 hover:underline break-words" target="_blank" rel="noopener noreferrer" />
             ),
             ul: ({ node, ...props }) => (
-              <ul {...props} className="list-disc pl-6 mb-4 space-y-1" />
+              <ul {...props} className="list-disc pl-8 mb-4 space-y-2" />
             ),
             ol: ({ node, ...props }) => (
-              <ol {...props} className="list-decimal pl-6 mb-4 space-y-1" />
+              <ol {...props} className="list-decimal pl-8 mb-4 space-y-2" />
             ),
             li: ({ node, ...props }) => (
-              <li {...props} className={`text-sm sm:text-base leading-relaxed ${isDarkMode ? "text-white" : "text-black"}`} />
+              <li {...props} className={`pl-1 text-sm sm:text-base leading-relaxed marker:text-gray-500 ${isDarkMode ? "text-white marker:text-gray-400" : "text-black"}`} />
             ),
             strong: ({ node, ...props }) => (
               <strong {...props} className={`font-bold ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             h1: ({ node, ...props }) => (
-              <h1 {...props} className={`text-2xl font-bold mb-4 mt-6 ${isDarkMode ? "text-white" : "text-black"}`} />
+              <h1 {...props} className={`text-2xl font-bold mb-6 mt-8 ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             h2: ({ node, ...props }) => (
-              <h2 {...props} className={`text-xl font-semibold mb-3 mt-5 ${isDarkMode ? "text-white" : "text-black"}`} />
+              <h2 {...props} className={`text-xl font-semibold mb-4 mt-6 ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             h3: ({ node, ...props }) => (
-              <h3 {...props} className={`text-lg font-medium mb-2 mt-4 ${isDarkMode ? "text-white" : "text-black"}`} />
+              <h3 {...props} className={`text-lg font-medium mb-3 mt-5 ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             code: ({ node, className, children, ...props }) => {
               const match = /language-(\w+)/.exec(className || "");
