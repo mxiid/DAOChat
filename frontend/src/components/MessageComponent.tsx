@@ -209,6 +209,13 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
             >
               <ThumbIcon type="up" active={feedback === 'up'} />
             </button>
+            <button 
+              onClick={() => handleFeedback('down')}
+              className="feedback-btn p-1 rounded-full transition-all duration-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+              aria-label="Thumbs down"
+            >
+              <ThumbIcon type="down" active={feedback === 'down'} />
+            </button>
           </div>
         )}
       </div>
