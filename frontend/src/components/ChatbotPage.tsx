@@ -236,13 +236,14 @@ const useChatbot = () => {
         },
         body: JSON.stringify({
           rating,
-          feedback_text: feedbackText,
           email,
+          feedback_text: feedbackText,
         }),
       });
-      setShowFeedback(false);
     } catch (error) {
-      console.error('Error submitting feedback:', error);
+      console.error('Error submitting session feedback:', error);
+    } finally {
+      setShowFeedback(false);
     }
   };
 
@@ -250,14 +251,14 @@ const useChatbot = () => {
     messages,
     input,
     setInput,
+    handleSendMessage,
     botState,
     streamingMessage,
-    handleSendMessage,
-    sessionReady: !!session.sessionId,
     errorDetails,
-    handleFeedbackSubmit,
     showFeedback,
-    setShowFeedback
+    setShowFeedback,
+    handleFeedbackSubmit,
+    isSessionReady: !!session.sessionId
   };
 }
 
@@ -403,14 +404,14 @@ export default function ChatbotPage() {
     messages, 
     input, 
     setInput, 
-    botState, 
-    streamingMessage, 
     handleSendMessage,
-    sessionReady,
+    botState,
+    streamingMessage,
     errorDetails,
-    handleFeedbackSubmit,
     showFeedback,
-    setShowFeedback
+    setShowFeedback,
+    handleFeedbackSubmit,
+    isSessionReady
   } = useChatbot()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
@@ -528,18 +529,18 @@ export default function ChatbotPage() {
                 value={input}
                 onChange={handleInputChange}
                 onKeyPress={handleKeyPress}
-                placeholder={!sessionReady ? "Initializing chat..." : messages.length === 0 ? "Ask me anything about real estate investments..." : "Type your message..."}
+                placeholder={!isSessionReady ? "Initializing chat..." : messages.length === 0 ? "Ask me anything about real estate investments..." : "Type your message..."}
                 className={`flex-grow rounded-l-full border-0 focus:ring-0 ${
                   isDarkMode ? 'bg-gray-800 text-white placeholder-gray-400' : 'bg-white text-gray-800 placeholder-gray-500'
                 }`}
-                disabled={botState !== 'idle' || !sessionReady}
+                disabled={botState !== 'idle' || !isSessionReady}
               />
               <Button
                 onClick={() => handleSendMessage(input)}
                 className={`rounded-r-full ${
-                  botState !== 'idle' || !sessionReady ? 'bg-gray-500' : 'bg-[#ADFF2F] hover:bg-[#9ACD32]'
+                  botState !== 'idle' || !isSessionReady ? 'bg-gray-500' : 'bg-[#ADFF2F] hover:bg-[#9ACD32]'
                 } text-black`}
-                disabled={botState !== 'idle' || !input.trim() || !sessionReady}
+                disabled={botState !== 'idle' || !input.trim() || !isSessionReady}
               >
                 {botState !== 'idle' ? <Loader2Icon className="w-4 h-4 animate-spin" /> : <SendIcon className="w-4 h-4" />}
               </Button>

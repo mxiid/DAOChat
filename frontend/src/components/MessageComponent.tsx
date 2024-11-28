@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { UserIcon } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import FeedbackModal from './FeedbackModal';
 
 const ThumbIcon = ({ type, active }: { type: 'up' | 'down'; active: boolean }) => (
   <svg 
@@ -39,6 +40,7 @@ interface MessageComponentProps {
 const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode, isStreaming }) => {
   const contentRef = useRef<HTMLDivElement>(null);
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
 
   useEffect(() => {
     if (contentRef.current && isStreaming) {
@@ -72,6 +74,28 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
       }
     } catch (error) {
       console.error('Error submitting feedback:', error);
+    }
+  };
+
+  const handleDetailedFeedback = async (rating: number, feedback: string, email: string) => {
+    if (!message.id) return;
+    
+    try {
+      await fetch(`/api/message/${message.id}/detailed-feedback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          rating,
+          feedback_text: feedback,
+          email,
+        }),
+      });
+    } catch (error) {
+      console.error('Error submitting detailed feedback:', error);
+    } finally {
+      setShowFeedbackModal(false);
     }
   };
 
@@ -159,41 +183,41 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
   };
 
   return (
-    <div className={`flex flex-col mb-2 ${message.role === "user" ? "items-end" : "items-start"}`}>
-      <div className="flex items-start max-w-full">
-        {message.role === "bot" && (
-          <div className="w-6 h-6 mr-2 flex-shrink-0 mt-1">
-            <img 
-              src="/emblem.svg" 
-              alt="DAO PropTech Emblem" 
-              className={`w-full h-full ${isDarkMode ? 'invert' : ''}`}
-            />
+    <>
+      <div className={`flex flex-col mb-2 ${message.role === "user" ? "items-end" : "items-start"}`}>
+        <div className="flex items-start max-w-full">
+          {message.role === "bot" && (
+            <div className="w-6 h-6 mr-2 flex-shrink-0 mt-1">
+              <img 
+                src="/emblem.svg" 
+                alt="DAO PropTech Emblem" 
+                className={`w-full h-full ${isDarkMode ? 'invert' : ''}`}
+              />
+            </div>
+          )}
+          <div className={`rounded-lg p-2 sm:p-3 ${message.role === "user" ? "bg-[#ADFF2F] text-black min-w-[60px]" : isDarkMode ? "bg-gray-700" : "bg-gray-200"}`}>
+            {renderContent()}
+          </div>
+          {message.role === "user" && <UserIcon className="w-5 h-5 sm:w-6 sm:h-6 ml-2 text-[#ADFF2F] flex-shrink-0 mt-1" />}
+        </div>
+        {message.role === 'bot' && !isStreaming && (
+          <div className="flex items-center gap-2 mt-1 ml-8">
+            <button 
+              onClick={() => handleFeedback('up')}
+              className="feedback-btn p-1 rounded-full transition-all duration-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+              aria-label="Thumbs up"
+            >
+              <ThumbIcon type="up" active={feedback === 'up'} />
+            </button>
           </div>
         )}
-        <div className={`rounded-lg p-2 sm:p-3 ${message.role === "user" ? "bg-[#ADFF2F] text-black min-w-[60px]" : isDarkMode ? "bg-gray-700" : "bg-gray-200"}`}>
-          {renderContent()}
-        </div>
-        {message.role === "user" && <UserIcon className="w-5 h-5 sm:w-6 sm:h-6 ml-2 text-[#ADFF2F] flex-shrink-0 mt-1" />}
       </div>
-      {message.role === 'bot' && !isStreaming && (
-        <div className="flex items-center gap-2 mt-1 ml-8">
-          <button 
-            onClick={() => handleFeedback('up')}
-            className="feedback-btn p-1 rounded-full transition-all duration-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-            aria-label="Thumbs up"
-          >
-            <ThumbIcon type="up" active={feedback === 'up'} />
-          </button>
-          <button 
-            onClick={() => handleFeedback('down')}
-            className="feedback-btn p-1 rounded-full transition-all duration-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-            aria-label="Thumbs down"
-          >
-            <ThumbIcon type="down" active={feedback === 'down'} />
-          </button>
-        </div>
-      )}
-    </div>
+      <FeedbackModal 
+        isOpen={showFeedbackModal}
+        onClose={() => setShowFeedbackModal(false)}
+        onSubmit={handleDetailedFeedback}
+      />
+    </>
   );
 };
 
