@@ -101,17 +101,17 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
 
   const renderContent = () => {
     if (message.role === 'user') {
-      return <p className="text-sm sm:text-base break-words">{message.content}</p>;
+      return <p className="text-sm sm:text-base break-words whitespace-pre-wrap">{message.content}</p>;
     }
 
     return (
-      <div ref={contentRef} className="overflow-hidden">
+      <div ref={contentRef} className="w-full overflow-hidden">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           className="markdown-content"
           components={{
             p: ({ node, ...props }) => (
-              <p {...props} className={`mb-4 text-sm sm:text-base leading-relaxed ${isDarkMode ? "text-white" : "text-black"}`} />
+              <p {...props} className="mb-4 text-sm sm:text-base leading-relaxed whitespace-pre-wrap break-words" />
             ),
             a: ({ node, ...props }) => (
               <a {...props} className="text-blue-500 hover:underline break-words" target="_blank" rel="noopener noreferrer" />
@@ -152,11 +152,9 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
               )
             },
             table: ({ node, ...props }) => (
-              <div className="overflow-x-auto w-full mb-4 -mx-2 sm:mx-0">
+              <div className="w-full overflow-x-auto my-4 -mx-2 sm:mx-0">
                 <div className="inline-block min-w-full align-middle p-2">
-                  <div className="overflow-hidden border border-gray-200 dark:border-gray-700 rounded-lg">
-                    <table {...props} className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" />
-                  </div>
+                  <table {...props} className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto" style={{ tableLayout: 'fixed' }} />
                 </div>
               </div>
             ),
@@ -166,19 +164,17 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
             th: ({ node, ...props }) => (
               <th 
                 {...props} 
-                className={`px-4 py-3 text-left text-xs font-semibold whitespace-nowrap
-                  ${isDarkMode 
-                    ? "text-gray-300 border-gray-700" 
-                    : "text-gray-700 border-gray-200"}`}
+                className={`px-4 py-3 text-left text-xs font-semibold whitespace-normal break-words
+                  ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}
+                style={{ wordWrap: 'break-word', minWidth: '120px' }}
               />
             ),
             td: ({ node, ...props }) => (
               <td 
                 {...props} 
                 className={`px-4 py-3 text-sm whitespace-normal break-words
-                  ${isDarkMode 
-                    ? "text-gray-300 border-gray-700" 
-                    : "text-gray-700 border-gray-200"}`}
+                  ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}
+                style={{ wordWrap: 'break-word' }}
               />
             ),
             blockquote: ({ node, ...props }) => (
@@ -196,8 +192,8 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
 
   return (
     <>
-      <div className={`flex flex-col mb-2 ${message.role === "user" ? "items-end" : "items-start"}`}>
-        <div className="flex items-start max-w-full w-full">
+      <div className={`flex flex-col mb-2 ${message.role === "user" ? "items-end" : "items-start"} w-full`}>
+        <div className={`flex items-start ${message.role === "user" ? "justify-end" : "justify-start"} w-full`}>
           {message.role === "bot" && (
             <div className="w-6 h-6 mr-2 flex-shrink-0 mt-1">
               <img 
@@ -207,9 +203,9 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
               />
             </div>
           )}
-          <div className={`rounded-lg p-2 sm:p-3 overflow-hidden ${
+          <div className={`rounded-lg p-2 sm:p-3 ${
             message.role === "user" 
-              ? "bg-[#ADFF2F] text-black min-w-[60px] max-w-full" 
+              ? "bg-[#ADFF2F] text-black max-w-[85%] sm:max-w-[75%]" 
               : isDarkMode 
                 ? "bg-gray-700 w-full" 
                 : "bg-gray-200 w-full"
