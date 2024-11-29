@@ -152,9 +152,11 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
               )
             },
             table: ({ node, ...props }) => (
-              <div className="w-full overflow-x-auto my-4 -mx-2 sm:mx-0">
+              <div className="w-full overflow-x-auto mb-4 -mx-2 sm:mx-0">
                 <div className="inline-block min-w-full align-middle p-2">
-                  <table {...props} className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto" style={{ tableLayout: 'fixed' }} />
+                  <div className="overflow-hidden border border-gray-200 dark:border-gray-700 rounded-lg">
+                    <table {...props} className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" />
+                  </div>
                 </div>
               </div>
             ),
@@ -164,17 +166,17 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
             th: ({ node, ...props }) => (
               <th 
                 {...props} 
-                className={`px-4 py-3 text-left text-xs font-semibold whitespace-normal break-words
-                  ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}
-                style={{ wordWrap: 'break-word', minWidth: '120px' }}
+                className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider border-r last:border-r-0 ${
+                  isDarkMode ? "bg-gray-800 text-gray-300 border-gray-700" : "bg-gray-50 text-gray-700 border-gray-200"
+                }`}
               />
             ),
             td: ({ node, ...props }) => (
               <td 
                 {...props} 
-                className={`px-4 py-3 text-sm whitespace-normal break-words
-                  ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}
-                style={{ wordWrap: 'break-word' }}
+                className={`px-4 py-3 text-sm border-t border-r last:border-r-0 ${
+                  isDarkMode ? "bg-gray-800 text-gray-300 border-gray-700" : "bg-white text-gray-700 border-gray-200"
+                }`}
               />
             ),
             blockquote: ({ node, ...props }) => (
@@ -193,7 +195,7 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
   return (
     <>
       <div className={`flex flex-col mb-2 ${message.role === "user" ? "items-end" : "items-start"} w-full`}>
-        <div className={`flex items-start ${message.role === "user" ? "justify-end" : "justify-start"} w-full`}>
+        <div className={`flex items-start ${message.role === "user" ? "justify-end" : "justify-start"} w-full px-2 sm:px-0`}>
           {message.role === "bot" && (
             <div className="w-6 h-6 mr-2 flex-shrink-0 mt-1">
               <img 
