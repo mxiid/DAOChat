@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from ..database import get_db
-from ..models import ChatMessage, ChatSession
+from ..models import ChatMessage, ChatSession, SessionFeedback
 from datetime import datetime
 import uuid
 import json
@@ -206,4 +206,40 @@ async def end_session(
     except Exception as e:
         await db.rollback()
         logger.error(f"Error ending session: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/session/{session_id}/feedback")
+async def session_feedback(
+    session_id: str,
+    feedback: dict,
+    db: AsyncSession = Depends(get_db)
+):
+    """Submit feedback for a chat session"""
+    try:
+        session = await db.execute(
+            select(ChatSession)
+            .where(ChatSession.id == session_id)
+        )
+        session = session.scalar_one_or_none()
+        
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Create new feedback entry
+        new_feedback = SessionFeedback(
+            session_id=session_id,
+            rating=feedback.get("rating"),
+            feedback_text=feedback.get("feedback_text"),
+            email=feedback.get("email"),
+            created_at=datetime.utcnow()
+        )
+        
+        db.add(new_feedback)
+        await db.commit()
+        
+        return {"status": "success", "message": "Feedback submitted successfully"}
+        
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error submitting session feedback: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

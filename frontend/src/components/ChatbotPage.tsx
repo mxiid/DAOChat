@@ -7,7 +7,7 @@ import { Input } from "./ui/input"
 import { ScrollArea } from "./ui/scroll-area"
 import { SendIcon, Loader2Icon, SunIcon, MoonIcon } from 'lucide-react'
 import MessageComponent from './MessageComponent'
-
+import FeedbackModal from './FeedbackModal'
 
 interface Message {
   role: 'user' | 'bot';
@@ -225,23 +225,30 @@ const useChatbot = () => {
     };
   }, [cleanup]);
 
-  const handleFeedbackSubmit = async (rating: number, feedbackText: string, email: string) => {
+  const handleFeedbackSubmit = async (rating: number, feedback: string, email: string) => {
     if (!session.sessionId) return;
     
     try {
-      await fetch(`/api/session/${session.sessionId}/feedback`, {
+      const response = await fetch(`/api/session/${session.sessionId}/feedback`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           rating,
-          email,
-          feedback_text: feedbackText,
+          feedback_text: feedback,
+          email: email || undefined,
         }),
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to submit feedback');
+      }
+
+      const data = await response.json();
+      console.log('Feedback submitted:', data);
     } catch (error) {
-      console.error('Error submitting session feedback:', error);
+      console.error('Error submitting feedback:', error);
     } finally {
       setShowFeedback(false);
     }
@@ -347,55 +354,6 @@ const ErrorMessage = ({ error, isDarkMode }: {
       </div>
     </div>
   );
-};
-
-interface FeedbackModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    onSubmit: (rating: number, feedback: string, email: string) => void;
-}
-
-const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose, onSubmit }) => {
-    const [rating, setRating] = useState<number>(0);
-    const [feedback, setFeedback] = useState('');
-    const [email, setEmail] = useState('');
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="modal-overlay">
-            <div className="modal-content">
-                <h2>How was your experience?</h2>
-                <div className="rating-container">
-                    {[1, 2, 3, 4, 5].map((value) => (
-                        <button
-                            key={value}
-                            onClick={() => setRating(value)}
-                            className={`rating-btn ${rating === value ? 'active' : ''}`}
-                        >
-                            {/* You can use emoji or custom smiley icons here */}
-                            {value <= rating ? '😊' : '😐'}
-                        </button>
-                    ))}
-                </div>
-                <textarea
-                    placeholder="Your feedback (optional)"
-                    value={feedback}
-                    onChange={(e) => setFeedback(e.target.value)}
-                />
-                <input
-                    type="email"
-                    placeholder="Your email (optional)"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                />
-                <div className="modal-buttons">
-                    <button onClick={() => onSubmit(rating, feedback, email)}>Submit</button>
-                    <button onClick={onClose}>Skip</button>
-                </div>
-            </div>
-        </div>
-    );
 };
 
 export default function ChatbotPage() {

@@ -18,13 +18,52 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose, onSubmit
   const [rating, setRating] = useState<number | null>(null);
   const [email, setEmail] = useState('');
   const [feedback, setFeedback] = useState('');
+  const [errors, setErrors] = useState<{
+    rating?: string;
+    email?: string;
+    feedback?: string;
+  }>({});
 
   if (!isOpen) return null;
 
+  const validateEmail = (email: string) => {
+    if (!email) return true; // Email is optional
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validateForm = () => {
+    const newErrors: typeof errors = {};
+
+    // Rating validation (required)
+    if (rating === null) {
+      newErrors.rating = 'Please select a rating';
+    }
+
+    // Email validation (optional but must be valid if provided)
+    if (email && !validateEmail(email)) {
+      newErrors.email = 'Please enter a valid email address';
+    }
+
+    // Feedback validation (optional but with min/max length if provided)
+    if (feedback && (feedback.length < 10 || feedback.length > 500)) {
+      newErrors.feedback = 'Feedback must be between 10 and 500 characters';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = () => {
-    if (rating === null) return;
-    onSubmit(rating, feedback, email);
-    onClose();
+    if (validateForm()) {
+      onSubmit(rating!, feedback, email);
+      onClose();
+      // Reset form
+      setRating(null);
+      setEmail('');
+      setFeedback('');
+      setErrors({});
+    }
   };
 
   return (
@@ -61,20 +100,28 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose, onSubmit
         </h2>
 
         {/* Emoji Rating */}
-        <div className="flex justify-center gap-4">
-          {EMOJI_RATINGS.map(({ emoji, value }) => (
-            <button
-              key={value}
-              onClick={() => setRating(value)}
-              className={`text-3xl transition-transform ${
-                rating === value 
-                  ? 'transform scale-125' 
-                  : 'opacity-50 hover:opacity-100 hover:scale-110'
-              }`}
-            >
-              {emoji}
-            </button>
-          ))}
+        <div className="space-y-2">
+          <div className="flex justify-center gap-4">
+            {EMOJI_RATINGS.map(({ emoji, value }) => (
+              <button
+                key={value}
+                onClick={() => {
+                  setRating(value);
+                  setErrors({ ...errors, rating: undefined });
+                }}
+                className={`text-3xl transition-transform ${
+                  rating === value 
+                    ? 'transform scale-125' 
+                    : 'opacity-50 hover:opacity-100 hover:scale-110'
+                }`}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+          {errors.rating && (
+            <p className="text-red-500 text-sm text-center">{errors.rating}</p>
+          )}
         </div>
 
         {/* Email Input */}
@@ -83,24 +130,47 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose, onSubmit
             type="email"
             placeholder="Your email (optional)"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 
-                     bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                     focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent"
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setErrors({ ...errors, email: undefined });
+            }}
+            className={`w-full px-4 py-2 rounded-lg border ${
+              errors.email 
+                ? 'border-red-500 focus:ring-red-500' 
+                : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500 dark:focus:ring-blue-400'
+            } bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+            focus:ring-2 focus:border-transparent`}
           />
+          {errors.email && (
+            <p className="text-red-500 text-sm">{errors.email}</p>
+          )}
         </div>
 
         {/* Feedback Input */}
         <div className="space-y-2">
           <textarea
-            placeholder="Your feedback (optional)"
+            placeholder="Your feedback (optional, min 10 characters if provided)"
             value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
+            onChange={(e) => {
+              setFeedback(e.target.value);
+              setErrors({ ...errors, feedback: undefined });
+            }}
             rows={3}
-            className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 
-                     bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                     focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent"
+            className={`w-full px-4 py-2 rounded-lg border ${
+              errors.feedback 
+                ? 'border-red-500 focus:ring-red-500' 
+                : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500 dark:focus:ring-blue-400'
+            } bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+            focus:ring-2 focus:border-transparent`}
           />
+          {feedback && (
+            <p className={`text-sm ${feedback.length > 500 ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
+              {feedback.length}/500 characters
+            </p>
+          )}
+          {errors.feedback && (
+            <p className="text-red-500 text-sm">{errors.feedback}</p>
+          )}
         </div>
 
         {/* Action Buttons */}
