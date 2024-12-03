@@ -368,8 +368,6 @@ class RAG:
                         logger.error(f"Error in response generation: {str(e)}")
                         yield "I encountered an error while processing your request. Please try again."
 
-                    return response_generator()
-
                 return response_generator()
 
             except Exception as e:

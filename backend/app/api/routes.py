@@ -35,33 +35,38 @@ async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
         # Get client info
         client_info = get_client_info(request)
         
-        # Create new session in RAG first
-        session_id = await rag_instance.create_session()
-        
-        # Update the existing session with client info
-        session = await db.execute(
-            select(ChatSession).where(ChatSession.id == session_id)
+        # Create session in database first
+        session_id = str(uuid.uuid4())
+        chat_session = ChatSession(
+            id=session_id,
+            user_id=client_info["ip_address"],
+            session_metadata=client_info,
+            created_at=datetime.utcnow(),
+            is_active=True
         )
-        session = session.scalar_one_or_none()
-        
-        if not session:
-            raise HTTPException(status_code=500, detail="Failed to create session")
-        
-        # Update session with client info
-        session.user_id = client_info["ip_address"]
-        session.session_metadata = client_info
+        db.add(chat_session)
         await db.commit()
         
-        return {
-            "session_id": session_id,
-            "message": "New session created successfully"
-        }
+        try:
+            # Then create RAG session
+            await rag_instance.create_session()
+            
+            return {
+                "session_id": session_id,
+                "message": "New session created successfully"
+            }
+            
+        except Exception as e:
+            # If RAG session creation fails, rollback database session
+            await db.delete(chat_session)
+            await db.commit()
+            raise e
         
     except Exception as e:
         await db.rollback()
         logger.error(f"Error creating session: {str(e)}", exc_info=True)
         
-        # If we failed after creating RAG session, clean it up
+        # Clean up any partial session state
         if 'session_id' in locals():
             try:
                 await rag_instance._remove_session(session_id)
@@ -100,11 +105,15 @@ async def ask_question(
 
         # Verify session exists in RAG
         if session_id not in rag_instance.active_sessions:
-            # Create new RAG session if database session exists but RAG session doesn't
-            await rag_instance.create_session()
-            logger.info(f"Recreated RAG session for existing database session: {session_id}")
+            try:
+                # Attempt to recreate RAG session
+                await rag_instance.create_session()
+                logger.info(f"Recreated RAG session for existing database session: {session_id}")
+            except Exception as e:
+                logger.error(f"Failed to recreate RAG session: {str(e)}")
+                raise HTTPException(status_code=500, detail="Failed to restore session")
 
-        # Update session metadata
+        # Update session metadata and last activity
         session.session_metadata.update(get_client_info(request))
         session.last_activity = datetime.utcnow()
         await db.commit()
