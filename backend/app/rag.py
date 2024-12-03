@@ -378,24 +378,47 @@ class RAG:
 
     async def _prepare_messages(self, question: str, memory):
         """Prepare messages for the conversation"""
+        # Reset memory if it's a new conversation
+        if len(memory.chat_memory.messages) == 0:
+            memory.clear()  # Clear any residual memory
+            
         if len(question.split()) <= 1:
             return [
                 SystemMessage(content=self.system_message),
-                *memory.chat_memory.messages[-10:],
-                HumanMessage(content=question)
+                HumanMessage(content=question)  # Only include current question for short queries
             ]
         
         query_type = self._classify_query(question.lower())
         project_name = self._extract_project_name(question)
         docs = await self._get_relevant_documents(question, query_type, project_name)
         
-        context = self._format_project_response(docs) if project_name else "\n\n".join(
-            f"- {doc.page_content}" for doc in docs
-        )
+        # Only include project-specific context if explicitly asked about a project
+        context = ""
+        if project_name:
+            context = self._format_project_response(docs)
+        else:
+            # For general queries, only include general information
+            context = "\n\n".join(
+                f"- {doc.page_content}" for doc in docs
+                if not any(proj.lower() in doc.page_content.lower() 
+                          for proj in self._extract_project_name("").keys())  # Filter out project-specific content
+            )
+        
+        # Only include recent relevant conversation history
+        recent_messages = []
+        for msg in memory.chat_memory.messages[-4:]:  # Last 2 turns
+            if isinstance(msg, HumanMessage):
+                # Only include if related to current query
+                if (project_name and project_name.lower() in msg.content.lower()) or \
+                   (not project_name and not any(proj.lower() in msg.content.lower() 
+                                               for proj in self._extract_project_name("").keys())):
+                    recent_messages.append(msg)
+            else:
+                recent_messages.append(msg)
         
         return [
             SystemMessage(content=self.system_message),
-            *memory.chat_memory.messages[-10:],
+            *recent_messages,
             HumanMessage(content=f"""Based on this context:
 {context}
 
@@ -526,16 +549,18 @@ Please provide a clear, specific answer focusing on the relevant details.""")
     def _get_or_create_memory(self, session_id: str) -> ConversationBufferMemory:
         """Get or create a conversation memory for a session"""
         logger.info(f"Accessing memory for session: {session_id}")
-        logger.info(f"Current active sessions: {list(self.memory_pools.keys())}")
-
+        
         if session_id not in self.memory_pools:
             logger.info(f"Creating new memory for session: {session_id}")
-            self.memory_pools[session_id] = ConversationBufferMemory(
+            memory = ConversationBufferMemory(
                 memory_key="chat_history",
                 return_messages=True,
                 output_key="answer"
             )
+            memory.clear()  # Ensure memory is empty
+            self.memory_pools[session_id] = memory
             self.last_access[session_id] = datetime.now().timestamp()
+            
         return self.memory_pools[session_id]
 
     async def _get_relevant_documents(self, question: str, query_type: str, project_name: Optional[str] = None) -> List[Document]:
@@ -570,15 +595,20 @@ Please provide a clear, specific answer focusing on the relevant details.""")
             if session_id is None:
                 session_id = str(uuid.uuid4())
             
-            # Add to active sessions and create memory
-            self.active_sessions.add(session_id)
-            self.memory_pools[session_id] = ConversationBufferMemory(
+            # Create fresh memory for new session
+            memory = ConversationBufferMemory(
                 memory_key="chat_history",
                 return_messages=True,
                 output_key="answer"
             )
+            memory.clear()  # Ensure memory is empty
+            
+            # Add to active sessions
+            self.active_sessions.add(session_id)
+            self.memory_pools[session_id] = memory
             self.last_access[session_id] = datetime.now().timestamp()
-            logger.info(f"Created new session: {session_id}")
+            
+            logger.info(f"Created new session with clean memory: {session_id}")
             return session_id
 
 # Create an instance of the RAG class with database session
