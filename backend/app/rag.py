@@ -54,7 +54,7 @@ class RAG:
         try:
             # Store the session factory instead of a session
             self.db_session = SessionLocal
-            
+
             # Initialize tokenizer with updated limits for gpt-4o-mini
             self.tokenizer = tiktoken.get_encoding("cl100k_base")
             self.max_context_tokens = 128000  # 128K context window
@@ -126,8 +126,12 @@ class RAG:
             - Keep responses focused and value-driven
             - Redirect unrelated queries to relevant offerings
             - Maintain professional yet warm tone
-            - Match query language style (English/Urdu), use local real estate terms, include PKR values, and provide culturally relevant context for DAO PropTech and it's projects.
+            - Match query language style (English/Roman Urdu)), use local real estate terms, include PKR values, and provide culturally relevant context for DAO PropTech and it's projects.
 
+            **Contact Details:**
+            - Email: info@daoproptech.com
+            - Phone: +92 310 0000326
+            - Website: https://daoproptech.com
 
             Remember: Your goal is to inform and guide investors toward confident decisions about DAO Proptech's innovative real estate opportunities."""
 
@@ -351,7 +355,7 @@ class RAG:
                                     yield chunk.content
                                 else:
                                     logger.warning(f"Invalid chunk content: {chunk.content}")
-                        
+
                         # After the streaming is complete, check if we got any response
                         if not collected_response:
                             yield "I apologize, but I couldn't generate a proper response. Please try again."
@@ -381,17 +385,17 @@ class RAG:
         # Reset memory if it's a new conversation
         if len(memory.chat_memory.messages) == 0:
             memory.clear()  # Clear any residual memory
-            
+
         if len(question.split()) <= 1:
             return [
                 SystemMessage(content=self.system_message),
                 HumanMessage(content=question)  # Only include current question for short queries
             ]
-        
+
         query_type = self._classify_query(question.lower())
         project_name = self._extract_project_name(question)
         docs = await self._get_relevant_documents(question, query_type, project_name)
-        
+
         # Only include project-specific context if explicitly asked about a project
         context = ""
         if project_name:
@@ -403,7 +407,7 @@ class RAG:
                 if not any(proj.lower() in doc.page_content.lower() 
                           for proj in self._extract_project_name("").keys())  # Filter out project-specific content
             )
-        
+
         # Only include recent relevant conversation history
         recent_messages = []
         for msg in memory.chat_memory.messages[-4:]:  # Last 2 turns
@@ -415,7 +419,7 @@ class RAG:
                     recent_messages.append(msg)
             else:
                 recent_messages.append(msg)
-        
+
         return [
             SystemMessage(content=self.system_message),
             *recent_messages,
@@ -441,7 +445,7 @@ Please provide a clear, specific answer focusing on the relevant details.""")
                         select(ChatSession).where(ChatSession.id == session_id)
                     )
                     chat_session = chat_session.scalar_one_or_none()
-                    
+
                     if not chat_session:
                         logger.error(f"Session {session_id} not found in database")
                         raise ValueError("Invalid session ID")
@@ -449,7 +453,7 @@ Please provide a clear, specific answer focusing on the relevant details.""")
                     # Update session last activity
                     chat_session.last_activity = datetime.utcnow()
                     await session.commit()
-                    
+
                 except Exception as e:
                     await session.rollback()
                     logger.error(f"Database error: {str(e)}")
@@ -549,7 +553,7 @@ Please provide a clear, specific answer focusing on the relevant details.""")
     def _get_or_create_memory(self, session_id: str) -> ConversationBufferMemory:
         """Get or create a conversation memory for a session"""
         logger.info(f"Accessing memory for session: {session_id}")
-        
+
         if session_id not in self.memory_pools:
             logger.info(f"Creating new memory for session: {session_id}")
             memory = ConversationBufferMemory(
@@ -560,7 +564,7 @@ Please provide a clear, specific answer focusing on the relevant details.""")
             memory.clear()  # Ensure memory is empty
             self.memory_pools[session_id] = memory
             self.last_access[session_id] = datetime.now().timestamp()
-            
+
         return self.memory_pools[session_id]
 
     async def _get_relevant_documents(self, question: str, query_type: str, project_name: Optional[str] = None) -> List[Document]:
@@ -594,7 +598,7 @@ Please provide a clear, specific answer focusing on the relevant details.""")
         async with self._session_lock:
             if session_id is None:
                 session_id = str(uuid.uuid4())
-            
+
             # Create fresh memory for new session
             memory = ConversationBufferMemory(
                 memory_key="chat_history",
@@ -602,12 +606,12 @@ Please provide a clear, specific answer focusing on the relevant details.""")
                 output_key="answer"
             )
             memory.clear()  # Ensure memory is empty
-            
+
             # Add to active sessions
             self.active_sessions.add(session_id)
             self.memory_pools[session_id] = memory
             self.last_access[session_id] = datetime.now().timestamp()
-            
+
             logger.info(f"Created new session with clean memory: {session_id}")
             return session_id
 
