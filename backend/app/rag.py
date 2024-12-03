@@ -302,11 +302,24 @@ class RAG:
             "akron": "Akron"
         }
 
+        if not query:
+            return None
+
         query_lower = query.lower()
         for key, value in project_mapping.items():
             if key in query_lower:
                 return value
         return None
+
+    def _get_project_names(self) -> dict:
+        """Get all project names mapping"""
+        return {
+            "urban dwellings": "Urban Dwellings",
+            "elements residencia": "Elements Residencia",
+            "globe residency": "Globe Residency Apartments",
+            "broad peak": "Broad Peak Realty",
+            "akron": "Akron"
+        }
 
     async def generate_questions(self, context: str) -> list[str]:
         try:
@@ -383,44 +396,15 @@ class RAG:
 
     async def _prepare_messages(self, question: str, memory):
         """Prepare messages for the conversation"""
-        # Reset memory if it's a new conversation
-        if len(memory.chat_memory.messages) == 0:
-            memory.clear()  # Clear any residual memory
-
-        if len(question.split()) <= 1:
-            return [
-                SystemMessage(content=self.system_message),
-                HumanMessage(content=question)  # Only include current question for short queries
-            ]
-
-        query_type = self._classify_query(question.lower())
-        project_name = self._extract_project_name(question)
-        docs = await self._get_relevant_documents(question, query_type, project_name)
-
-        # Only include project-specific context if explicitly asked about a project
-        context = ""
-        if project_name:
-            context = self._format_project_response(docs)
-        else:
-            # For general queries, only include general information
-            context = "\n\n".join(
-                f"- {doc.page_content}" for doc in docs
-                if not any(proj.lower() in doc.page_content.lower() 
-                          for proj in self._extract_project_name("").keys())  # Filter out project-specific content
-            )
-
-        # Only include recent relevant conversation history
-        recent_messages = []
-        for msg in memory.chat_memory.messages[-4:]:  # Last 2 turns
-            if isinstance(msg, HumanMessage):
-                # Only include if related to current query
-                if (project_name and project_name.lower() in msg.content.lower()) or \
-                   (not project_name and not any(proj.lower() in msg.content.lower() 
-                                               for proj in self._extract_project_name("").keys())):
-                    recent_messages.append(msg)
-            else:
-                recent_messages.append(msg)
-
+        # Get relevant documents from RAG
+        docs = await self._get_relevant_documents(question, self._classify_query(question.lower()))
+        
+        # Format context from relevant documents
+        context = "\n\n".join(f"- {doc.page_content}" for doc in docs)
+        
+        # Include only recent conversation history (last 2 turns)
+        recent_messages = memory.chat_memory.messages[-4:] if memory.chat_memory.messages else []
+        
         return [
             SystemMessage(content=self.system_message),
             *recent_messages,
@@ -489,7 +473,9 @@ Please provide a clear, specific answer focusing on the relevant details.""")
         async with self._session_lock:
             try:
                 self.active_sessions.discard(session_id)
-                self.memory_pools.pop(session_id, None)
+                if session_id in self.memory_pools:
+                    self.memory_pools[session_id].clear()  # Clear memory before removing
+                    self.memory_pools.pop(session_id, None)
                 self.last_access.pop(session_id, None)
                 logger.info(f"Removed session from memory: {session_id}")
             except Exception as e:
@@ -553,8 +539,6 @@ Please provide a clear, specific answer focusing on the relevant details.""")
 
     def _get_or_create_memory(self, session_id: str) -> ConversationBufferMemory:
         """Get or create a conversation memory for a session"""
-        logger.info(f"Accessing memory for session: {session_id}")
-
         if session_id not in self.memory_pools:
             logger.info(f"Creating new memory for session: {session_id}")
             memory = ConversationBufferMemory(
@@ -562,34 +546,22 @@ Please provide a clear, specific answer focusing on the relevant details.""")
                 return_messages=True,
                 output_key="answer"
             )
-            memory.clear()  # Ensure memory is empty
+            memory.clear()
             self.memory_pools[session_id] = memory
             self.last_access[session_id] = datetime.now().timestamp()
-
+        
         return self.memory_pools[session_id]
 
-    async def _get_relevant_documents(self, question: str, query_type: str, project_name: Optional[str] = None) -> List[Document]:
+    async def _get_relevant_documents(self, question: str, query_type: str) -> List[Document]:
         """Get relevant documents with caching"""
         try:
-            logger.info(f"Searching for: Project={project_name}, Query={question}")
-
-            if project_name:
-                # Simple similarity search for the specific project
-                docs = self.vectordb.similarity_search(
-                    question,
-                    k=4,  # Get top 4 results
-                )
-                logger.info(f"Found {len(docs)} documents for {project_name}")
-                return docs
-            else:
-                # General search
-                docs = self.vectordb.similarity_search(
-                    question,
-                    k=4
-                )
-                logger.info(f"Found {len(docs)} documents for general query")
-                return docs
-
+            logger.info(f"Searching for query: {question}")
+            docs = self.vectordb.similarity_search(
+                question,
+                k=4  # Get top 4 results
+            )
+            logger.info(f"Found {len(docs)} relevant documents")
+            return docs
         except Exception as e:
             logger.error(f"Error retrieving documents: {str(e)}", exc_info=True)
             return []
@@ -599,7 +571,7 @@ Please provide a clear, specific answer focusing on the relevant details.""")
         async with self._session_lock:
             if session_id is None:
                 session_id = str(uuid.uuid4())
-
+            
             # Create fresh memory for new session
             memory = ConversationBufferMemory(
                 memory_key="chat_history",
@@ -607,12 +579,12 @@ Please provide a clear, specific answer focusing on the relevant details.""")
                 output_key="answer"
             )
             memory.clear()  # Ensure memory is empty
-
+            
             # Add to active sessions
             self.active_sessions.add(session_id)
             self.memory_pools[session_id] = memory
             self.last_access[session_id] = datetime.now().timestamp()
-
+            
             logger.info(f"Created new session with clean memory: {session_id}")
             return session_id
 
