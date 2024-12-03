@@ -132,6 +132,7 @@ class RAG:
             - Email: info@daoproptech.com
             - Phone: +92 310 0000326
             - Website: https://daoproptech.com
+            - Office Address: 17-A, Business Bay, Sector F, DHA-1, Islamabad, Pakistan
 
             Remember: Your goal is to inform and guide investors toward confident decisions about DAO Proptech's innovative real estate opportunities."""
 
