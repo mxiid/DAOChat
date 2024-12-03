@@ -103,6 +103,18 @@ async def ask_question(
         if not session:
             raise HTTPException(status_code=401, detail="Invalid or inactive session")
 
+        # Store user's message first
+        user_message = ChatMessage(
+            session_id=session_id,
+            role='user',
+            content=text["text"],
+            message_metadata={
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
+        db.add(user_message)
+        await db.commit()
+
         # Verify session exists in RAG
         if session_id not in rag_instance.active_sessions:
             try:
@@ -230,6 +242,7 @@ async def session_feedback(
 ):
     """Submit feedback for a chat session"""
     try:
+        # Check if session exists and is active
         session = await db.execute(
             select(ChatSession)
             .where(ChatSession.id == session_id)
@@ -239,16 +252,34 @@ async def session_feedback(
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        # Create new feedback entry
-        new_feedback = SessionFeedback(
-            session_id=session_id,
-            rating=feedback.get("rating"),
-            feedback_text=feedback.get("feedback_text"),
-            email=feedback.get("email"),
-            created_at=datetime.utcnow()
+        # Check if feedback already exists
+        existing_feedback = await db.execute(
+            select(SessionFeedback)
+            .where(SessionFeedback.session_id == session_id)
         )
+        existing_feedback = existing_feedback.scalar_one_or_none()
         
-        db.add(new_feedback)
+        if existing_feedback:
+            # Update existing feedback
+            existing_feedback.rating = feedback.get("rating")
+            existing_feedback.feedback_text = feedback.get("feedback_text")
+            existing_feedback.email = feedback.get("email")
+        else:
+            # Create new feedback entry
+            new_feedback = SessionFeedback(
+                session_id=session_id,
+                rating=feedback.get("rating"),
+                feedback_text=feedback.get("feedback_text"),
+                email=feedback.get("email"),
+                created_at=datetime.utcnow()
+            )
+            db.add(new_feedback)
+        
+        # Mark session as inactive if it was a feedback submission
+        if feedback.get("end_session", False):
+            session.is_active = False
+            session.ended_at = datetime.utcnow()
+        
         await db.commit()
         
         return {"status": "success", "message": "Feedback submitted successfully"}
