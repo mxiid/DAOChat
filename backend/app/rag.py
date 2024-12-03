@@ -334,6 +334,29 @@ class RAG:
             logger.error(f"Error in generate_questions method: {str(e)}", exc_info=True)
             raise
 
+    def _format_markdown(self, text: str) -> str:
+        """Ensure consistent markdown formatting"""
+        # Fix bullet points
+        text = re.sub(r'(?m)^[•*+-]\s+', '- ', text)
+        
+        # Fix headings (ensure space after #)
+        text = re.sub(r'(?m)^(#{1,6})([^ #])', r'\1 \2', text)
+        
+        # Fix bold text (ensure consistent ** usage)
+        text = re.sub(r'(?<!\*)\*(?!\*)(.*?)(?<!\*)\*(?!\*)', r'**\1**', text)
+        text = re.sub(r'_{1,2}(.*?)_{1,2}', r'**\1**', text)
+        
+        # Fix lists (ensure proper spacing)
+        text = re.sub(r'(?m)^(\d+\.)\s*', r'\1 ', text)
+        
+        # Fix code blocks (ensure proper spacing)
+        text = re.sub(r'`([^`]+)`', r'` \1 `', text)
+        
+        # Fix line breaks (ensure consistent spacing)
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        
+        return text.strip()
+
     @ChatMonitoring.track_request
     async def stream_query(self, question: str, session_id: str):
         """Process and stream responses with proper session management"""
@@ -360,17 +383,31 @@ class RAG:
                 # Create and return the async generator
                 async def response_generator():
                     collected_response = []
+                    current_chunk = ""
+                    
                     try:
                         async for chunk in self.streaming_llm.astream(messages):
                             if hasattr(chunk, 'content') and chunk.content:
-                                # Validate chunk content is not encoded/corrupted
                                 if isinstance(chunk.content, str) and chunk.content.strip():
-                                    collected_response.append(chunk.content)
-                                    yield chunk.content
+                                    current_chunk += chunk.content
+                                    
+                                    # Process complete sentences or markdown blocks
+                                    if re.search(r'[.!?]\s*$', chunk.content) or \
+                                       re.search(r'\n\s*$', chunk.content):
+                                        formatted_chunk = self._format_markdown(current_chunk)
+                                        collected_response.append(formatted_chunk)
+                                        yield formatted_chunk
+                                        current_chunk = ""
                                 else:
                                     logger.warning(f"Invalid chunk content: {chunk.content}")
+                        
+                        # Process any remaining content
+                        if current_chunk:
+                            formatted_chunk = self._format_markdown(current_chunk)
+                            collected_response.append(formatted_chunk)
+                            yield formatted_chunk
 
-                        # After the streaming is complete, check if we got any response
+                        # If no valid response was collected
                         if not collected_response:
                             yield "I apologize, but I couldn't generate a proper response. Please try again."
                             return
