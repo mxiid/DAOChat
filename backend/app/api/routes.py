@@ -48,8 +48,8 @@ async def create_session(request: Request, db: AsyncSession = Depends(get_db)):
         await db.commit()
         
         try:
-            # Then create RAG session
-            await rag_instance.create_session()
+            # Create RAG session with the same ID
+            await rag_instance.create_session(session_id)
             
             return {
                 "session_id": session_id,
@@ -106,8 +106,8 @@ async def ask_question(
         # Verify session exists in RAG
         if session_id not in rag_instance.active_sessions:
             try:
-                # Attempt to recreate RAG session
-                await rag_instance.create_session()
+                # Recreate RAG session with the same ID
+                await rag_instance.create_session(session_id)
                 logger.info(f"Recreated RAG session for existing database session: {session_id}")
             except Exception as e:
                 logger.error(f"Failed to recreate RAG session: {str(e)}")

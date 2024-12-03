@@ -564,10 +564,13 @@ Please provide a clear, specific answer focusing on the relevant details.""")
             logger.error(f"Error retrieving documents: {str(e)}", exc_info=True)
             return []
 
-    async def create_session(self) -> str:
+    async def create_session(self, session_id: Optional[str] = None) -> str:
         """Create a new session with proper locking"""
         async with self._session_lock:
-            session_id = str(uuid.uuid4())
+            if session_id is None:
+                session_id = str(uuid.uuid4())
+            
+            # Add to active sessions and create memory
             self.active_sessions.add(session_id)
             self.memory_pools[session_id] = ConversationBufferMemory(
                 memory_key="chat_history",
