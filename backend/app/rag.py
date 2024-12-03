@@ -135,13 +135,23 @@ class RAG:
             self.vectordb = self._load_vectordb()
 
             # Initialize LLMs with proper configurations for gpt-4o-mini
+            self.llm = ChatOpenAI(
+                temperature=0,
+                model_name=model_name,
+                streaming=False,
+                max_tokens=self.max_output_tokens,
+            )
+
             self.streaming_llm = ChatOpenAI(
                 temperature=0,
                 model_name=model_name,
                 streaming=True,
-                max_tokens=self.max_output_tokens,  # Allow for maximum output
-                request_timeout=60  # Increased timeout for larger responses
+                max_tokens=self.max_output_tokens,
+                request_timeout=60
             )
+
+            # Add a lock for thread-safe session management
+            self._session_lock = asyncio.Lock()
 
             # Session management
             self.memory_pools = {}
@@ -309,6 +319,11 @@ class RAG:
     @ChatMonitoring.track_request
     async def stream_query(self, question: str, session_id: str):
         """Process and stream responses with proper session management"""
+        if not question or not question.strip():
+            async def empty_response():
+                yield "I couldn't understand your question. Could you please rephrase it?"
+            return empty_response()
+
         if session_id not in self.active_sessions:
             logger.warning(f"Invalid session ID: {session_id}")
             async def error_gen():
@@ -327,19 +342,33 @@ class RAG:
                 # Create and return the async generator
                 async def response_generator():
                     collected_response = []
-                    async for chunk in self.streaming_llm.astream(messages):
-                        if hasattr(chunk, 'content') and chunk.content:
-                            collected_response.append(chunk.content)
-                            yield chunk.content
+                    try:
+                        async for chunk in self.streaming_llm.astream(messages):
+                            if hasattr(chunk, 'content') and chunk.content:
+                                # Validate chunk content is not encoded/corrupted
+                                if isinstance(chunk.content, str) and chunk.content.strip():
+                                    collected_response.append(chunk.content)
+                                    yield chunk.content
+                                else:
+                                    logger.warning(f"Invalid chunk content: {chunk.content}")
+                        
+                        # After the streaming is complete, check if we got any response
+                        if not collected_response:
+                            yield "I apologize, but I couldn't generate a proper response. Please try again."
+                            return
 
-                    # Update memory and store in database after completion
-                    if collected_response:
+                        # Update memory and store in database after completion
                         await self._update_conversation_history(
                             session_id, 
                             question, 
                             collected_response, 
                             memory
                         )
+                    except Exception as e:
+                        logger.error(f"Error in response generation: {str(e)}")
+                        yield "I encountered an error while processing your request. Please try again."
+
+                    return response_generator()
 
                 return response_generator()
 
@@ -430,14 +459,15 @@ Please provide a clear, specific answer focusing on the relevant details.""")
                 logger.info(f"Cleaned up session memory: {session_id}")
 
     async def _remove_session(self, session_id: str):
-        """Safely remove a session from memory only"""
-        try:
-            self.active_sessions.discard(session_id)
-            self.memory_pools.pop(session_id, None)
-            self.last_access.pop(session_id, None)
-            logger.info(f"Removed session from memory: {session_id}")
-        except Exception as e:
-            logger.error(f"Error removing session {session_id} from memory: {str(e)}")
+        """Safely remove a session with proper locking"""
+        async with self._session_lock:
+            try:
+                self.active_sessions.discard(session_id)
+                self.memory_pools.pop(session_id, None)
+                self.last_access.pop(session_id, None)
+                logger.info(f"Removed session from memory: {session_id}")
+            except Exception as e:
+                logger.error(f"Error removing session {session_id}: {str(e)}")
 
     def _extract_metadata(self, text: str) -> dict:
         """Extract metadata from text content"""
@@ -537,55 +567,18 @@ Please provide a clear, specific answer focusing on the relevant details.""")
             return []
 
     async def create_session(self) -> str:
-        """Create a new session and return its ID"""
-        max_retries = 3
-        retry_count = 0
-        
-        while retry_count < max_retries:
-            try:
-                session_id = str(uuid.uuid4())
-                
-                # Create session in database first
-                async with self.db_session() as session:
-                    try:
-                        # Check if session ID already exists
-                        existing = await session.execute(
-                            select(ChatSession).where(ChatSession.id == session_id)
-                        )
-                        if existing.scalar_one_or_none():
-                            retry_count += 1
-                            continue
-                        
-                        chat_session = ChatSession(
-                            id=session_id,
-                            created_at=datetime.utcnow(),
-                            is_active=True
-                        )
-                        session.add(chat_session)
-                        await session.commit()
-                        
-                        # Then set up memory
-                        self.active_sessions.add(session_id)
-                        self.memory_pools[session_id] = ConversationBufferMemory(
-                            memory_key="chat_history",
-                            return_messages=True,
-                            output_key="answer"
-                        )
-                        self.last_access[session_id] = datetime.now().timestamp()
-                        
-                        logger.info(f"Created new session: {session_id}")
-                        return session_id
-                        
-                    except Exception as e:
-                        await session.rollback()
-                        logger.error(f"Error creating session: {str(e)}")
-                        retry_count += 1
-                        
-            except Exception as e:
-                logger.error(f"Error in create_session: {str(e)}")
-                retry_count += 1
-        
-        raise HTTPException(status_code=500, detail="Failed to create session after multiple retries")
+        """Create a new session with proper locking"""
+        async with self._session_lock:
+            session_id = str(uuid.uuid4())
+            self.active_sessions.add(session_id)
+            self.memory_pools[session_id] = ConversationBufferMemory(
+                memory_key="chat_history",
+                return_messages=True,
+                output_key="answer"
+            )
+            self.last_access[session_id] = datetime.now().timestamp()
+            logger.info(f"Created new session: {session_id}")
+            return session_id
 
 # Create an instance of the RAG class with database session
 def get_rag_instance():

@@ -81,6 +81,10 @@ async def ask_question(
         if not session_id:
             raise HTTPException(status_code=401, detail="No session ID provided")
 
+        # Validate the question text
+        if not text or not text.get("text") or not text["text"].strip():
+            raise HTTPException(status_code=400, detail="Invalid or empty question")
+
         # Get session from database
         session = await db.execute(
             select(ChatSession)
@@ -96,13 +100,11 @@ async def ask_question(
 
         # Verify session exists in RAG
         if session_id not in rag_instance.active_sessions:
-            # Mark session as inactive
-            session.is_active = False
-            session.ended_at = datetime.utcnow()
-            await db.commit()
-            raise HTTPException(status_code=401, detail="Session expired. Please create a new session.")
+            # Create new RAG session if database session exists but RAG session doesn't
+            await rag_instance.create_session()
+            logger.info(f"Recreated RAG session for existing database session: {session_id}")
 
-        # Update session metadata with latest client info
+        # Update session metadata
         session.session_metadata.update(get_client_info(request))
         session.last_activity = datetime.utcnow()
         await db.commit()
@@ -110,12 +112,16 @@ async def ask_question(
         # Get the response from RAG instance
         async def generate():
             bot_response = ""
-            bot_message_id = None
             try:
                 async for token in await rag_instance.stream_query(text["text"], session_id):
-                    bot_response += token
-                    yield f"data: {json.dumps({'token': token})}\n\n"
+                    if token and isinstance(token, str):
+                        bot_response += token
+                        yield f"data: {json.dumps({'token': token})}\n\n"
                 
+                if not bot_response:
+                    yield f"data: {json.dumps({'error': 'No response generated'})}\n\n"
+                    return
+
                 # Create bot message after complete response
                 bot_message = ChatMessage(
                     session_id=session_id,
@@ -128,10 +134,9 @@ async def ask_question(
                 db.add(bot_message)
                 await db.commit()
                 await db.refresh(bot_message)
-                bot_message_id = bot_message.id
                 
                 # Send message ID in a special message
-                yield f"data: {json.dumps({'message_id': bot_message_id})}\n\n"
+                yield f"data: {json.dumps({'message_id': bot_message.id})}\n\n"
                 
             except Exception as e:
                 logger.error(f"Error in stream generation: {str(e)}", exc_info=True)
