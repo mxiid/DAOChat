@@ -111,78 +111,77 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
           className="markdown-content"
           components={{
             p: ({ node, ...props }) => (
-              <p {...props} className="mb-4 text-sm sm:text-base leading-relaxed whitespace-pre-wrap break-words last:mb-0" />
+              <p {...props} className="mb-2 text-sm sm:text-base leading-relaxed break-words" />
             ),
             a: ({ node, ...props }) => (
               <a {...props} className="text-blue-500 hover:underline break-words" target="_blank" rel="noopener noreferrer" />
             ),
             ul: ({ node, ...props }) => (
-              <ul {...props} className="list-disc pl-6 mb-4 space-y-2 last:mb-0" />
+              <ul {...props} className="list-disc pl-6 mb-4 space-y-1" />
             ),
             ol: ({ node, ...props }) => (
-              <ol {...props} className="list-decimal pl-6 mb-4 space-y-2 last:mb-0" />
+              <ol {...props} className="list-decimal pl-6 mb-4 space-y-1" />
             ),
             li: ({ node, ...props }) => (
-              <li {...props} className={`pl-1 text-sm sm:text-base leading-relaxed ${isDarkMode ? "text-white" : "text-black"}`} />
+              <li {...props} className={`text-sm sm:text-base leading-relaxed ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             strong: ({ node, ...props }) => (
-              <strong {...props} className={`font-bold ${isDarkMode ? "text-white" : "text-black"}`} />
+              <strong {...props} className={`font-semibold ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             h1: ({ node, ...props }) => (
-              <h1 {...props} className={`text-2xl font-bold mb-4 mt-2 ${isDarkMode ? "text-white" : "text-black"}`} />
+              <h1 {...props} className={`text-xl font-bold mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             h2: ({ node, ...props }) => (
-              <h2 {...props} className={`text-xl font-semibold mb-3 mt-2 ${isDarkMode ? "text-white" : "text-black"}`} />
+              <h2 {...props} className={`text-lg font-semibold mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             h3: ({ node, ...props }) => (
-              <h3 {...props} className={`text-lg font-medium mb-2 mt-2 ${isDarkMode ? "text-white" : "text-black"}`} />
+              <h3 {...props} className={`text-base font-medium mb-2 ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             code: ({ node, className, children, ...props }) => {
               const match = /language-(\w+)/.exec(className || "");
               return match ? (
-                <pre className={`rounded-md p-3 mb-4 overflow-x-auto ${isDarkMode ? "bg-gray-800" : "bg-gray-100"}`}>
+                <pre className={`rounded-md p-2 mb-4 overflow-x-auto ${isDarkMode ? "bg-gray-800" : "bg-gray-100"}`}>
                   <code className={`language-${match[1]} block text-sm font-mono ${isDarkMode ? "text-gray-100" : "text-gray-800"}`} {...props}>
                     {children}
                   </code>
                 </pre>
               ) : (
-                <code {...props} className={`font-mono text-sm px-1.5 py-0.5 rounded ${isDarkMode ? "bg-gray-800 text-gray-100" : "bg-gray-100 text-gray-800"}`}>
+                <code {...props} className={`font-mono text-sm px-1 py-0.5 rounded ${isDarkMode ? "bg-gray-800 text-gray-100" : "bg-gray-100 text-gray-800"}`}>
                   {children}
                 </code>
               )
             },
             table: ({ node, ...props }) => (
-              <div className="w-full overflow-x-auto mb-4 -mx-2 sm:mx-0">
-                <div className="inline-block min-w-full align-middle p-2">
-                  <div className="overflow-hidden border border-gray-200 dark:border-gray-700 rounded-lg">
-                    <table {...props} className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto" />
-                  </div>
-                </div>
+              <div className="w-full overflow-x-auto my-2">
+                <table {...props} className="w-full border-collapse border border-gray-300 dark:border-gray-700" />
               </div>
             ),
             thead: ({ node, ...props }) => (
-              <thead {...props} className={`${isDarkMode ? "bg-gray-800" : "bg-gray-50"}`} />
+              <thead {...props} className={`${isDarkMode ? "bg-gray-800" : "bg-gray-100"}`} />
             ),
             th: ({ node, ...props }) => (
               <th 
                 {...props} 
-                className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${
-                  isDarkMode ? "bg-gray-800 text-gray-300 border-gray-700" : "bg-gray-50 text-gray-700 border-gray-200"
+                className={`p-2 text-left text-sm border border-gray-300 dark:border-gray-700 ${
+                  isDarkMode ? "text-gray-200" : "text-gray-900"
                 }`}
               />
             ),
             td: ({ node, ...props }) => (
               <td 
                 {...props} 
-                className={`px-4 py-3 text-sm whitespace-nowrap ${
-                  isDarkMode ? "bg-gray-800 text-gray-300 border-gray-700" : "bg-white text-gray-700 border-gray-200"
+                className={`p-2 text-sm border border-gray-300 dark:border-gray-700 ${
+                  isDarkMode ? "text-gray-300" : "text-gray-700"
                 }`}
               />
             ),
             blockquote: ({ node, ...props }) => (
-              <blockquote {...props} className={`border-l-4 pl-4 italic my-4 ${
+              <blockquote {...props} className={`border-l-4 pl-4 my-2 ${
                 isDarkMode ? "border-gray-600 text-gray-300" : "border-gray-300 text-gray-700"
-              } last:mb-0`} />
+              }`} />
+            ),
+            hr: ({ node, ...props }) => (
+              <hr {...props} className="my-4 border-t border-gray-300 dark:border-gray-700" />
             )
           }}
         >
