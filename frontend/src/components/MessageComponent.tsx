@@ -117,10 +117,10 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
               <a {...props} className="text-blue-500 hover:underline break-words" target="_blank" rel="noopener noreferrer" />
             ),
             ul: ({ node, ...props }) => (
-              <ul {...props} className="list-disc pl-6 mb-4 space-y-1" />
+              <ul {...props} className="list-disc pl-4 sm:pl-6 mb-4 space-y-1" />
             ),
             ol: ({ node, ...props }) => (
-              <ol {...props} className="list-decimal pl-6 mb-4 space-y-1" />
+              <ol {...props} className="list-decimal pl-4 sm:pl-6 mb-4 space-y-1" />
             ),
             li: ({ node, ...props }) => (
               <li {...props} className={`text-sm sm:text-base leading-relaxed ${isDarkMode ? "text-white" : "text-black"}`} />
@@ -152,31 +152,41 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
               )
             },
             table: ({ node, ...props }) => (
-              <div className="w-full overflow-x-auto my-2">
-                <table {...props} className="w-full border-collapse border border-gray-300 dark:border-gray-700" />
+              <div className="w-full overflow-x-auto mb-4 -mx-2 sm:mx-0">
+                <div className="inline-block min-w-full align-middle p-2">
+                  <div className="overflow-hidden border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm">
+                    <table {...props} className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto text-sm sm:text-base" />
+                  </div>
+                </div>
               </div>
             ),
             thead: ({ node, ...props }) => (
-              <thead {...props} className={`${isDarkMode ? "bg-gray-800" : "bg-gray-100"}`} />
+              <thead {...props} className={`${isDarkMode ? "bg-gray-800" : "bg-gray-50"}`} />
             ),
             th: ({ node, ...props }) => (
               <th 
                 {...props} 
-                className={`p-2 text-left text-sm border border-gray-300 dark:border-gray-700 ${
-                  isDarkMode ? "text-gray-200" : "text-gray-900"
+                className={`px-3 py-2 sm:px-4 sm:py-3 text-left font-semibold uppercase tracking-wider border-b border-r last:border-r-0 ${
+                  isDarkMode 
+                    ? "bg-gray-800 text-gray-300 border-gray-700" 
+                    : "bg-gray-50 text-gray-700 border-gray-200"
                 }`}
+                style={{ minWidth: '120px' }}
               />
             ),
             td: ({ node, ...props }) => (
               <td 
                 {...props} 
-                className={`p-2 text-sm border border-gray-300 dark:border-gray-700 ${
-                  isDarkMode ? "text-gray-300" : "text-gray-700"
+                className={`px-3 py-2 sm:px-4 sm:py-3 border-b border-r last:border-r-0 ${
+                  isDarkMode 
+                    ? "bg-gray-800 text-gray-300 border-gray-700" 
+                    : "bg-white text-gray-700 border-gray-200"
                 }`}
+                style={{ minWidth: '120px' }}
               />
             ),
             blockquote: ({ node, ...props }) => (
-              <blockquote {...props} className={`border-l-4 pl-4 my-2 ${
+              <blockquote {...props} className={`border-l-4 pl-3 sm:pl-4 my-2 ${
                 isDarkMode ? "border-gray-600 text-gray-300" : "border-gray-300 text-gray-700"
               }`} />
             ),
