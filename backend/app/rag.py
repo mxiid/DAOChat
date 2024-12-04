@@ -49,8 +49,11 @@ from .models import ChatMessage, ChatSession
 from .database import SessionLocal, Base, engine
 from sqlalchemy import select
 
+
 class RAG:
-    def __init__(self, model_name: str = 'gpt-4o-mini', memory_ttl: int = 1800, db_session=None):
+    def __init__(
+        self, model_name: str = "gpt-4o-mini", memory_ttl: int = 1800, db_session=None
+    ):
         try:
             # Store the session factory instead of a session
             self.db_session = SessionLocal
@@ -58,7 +61,7 @@ class RAG:
             # Initialize tokenizer with updated limits for gpt-4o-mini
             self.tokenizer = tiktoken.get_encoding("cl100k_base")
             self.max_context_tokens = 128000  # 128K context window
-            self.max_output_tokens = 16000    # 16K output tokens
+            self.max_output_tokens = 16000  # 16K output tokens
 
             # Define system message
             self.system_message = """You are DAO Proptech's expert AI investment advisor, specializing in real estate investment opportunities. You combine the precision of a wealth manager with the warmth of a trusted advisor.
@@ -152,7 +155,7 @@ class RAG:
                 model_name=model_name,
                 streaming=True,
                 max_tokens=self.max_output_tokens,
-                request_timeout=60
+                request_timeout=60,
             )
 
             # Add a lock for thread-safe session management
@@ -181,14 +184,18 @@ class RAG:
         try:
             if os.path.exists(Config.FAISS_INDEX_PATH):
                 vectordb = FAISS.load_local(
-                    Config.FAISS_INDEX_PATH, 
+                    Config.FAISS_INDEX_PATH,
                     self.embeddings,
-                    allow_dangerous_deserialization=True
+                    allow_dangerous_deserialization=True,
                 )
-                logger.info(f"Loaded existing FAISS index from {Config.FAISS_INDEX_PATH}")
+                logger.info(
+                    f"Loaded existing FAISS index from {Config.FAISS_INDEX_PATH}"
+                )
                 return vectordb
             else:
-                raise FileNotFoundError(f"FAISS index not found at {Config.FAISS_INDEX_PATH}")
+                raise FileNotFoundError(
+                    f"FAISS index not found at {Config.FAISS_INDEX_PATH}"
+                )
         except Exception as e:
             logger.error(f"Error loading vector store: {str(e)}")
             raise
@@ -204,7 +211,9 @@ class RAG:
         Human: {question}
 
         Assistant:"""
-        return PromptTemplate(template=template, input_variables=["context", "chat_history", "question"])
+        return PromptTemplate(
+            template=template, input_variables=["context", "chat_history", "question"]
+        )
 
     async def _process_request(self, question: str, session_id: str):
         try:
@@ -215,10 +224,16 @@ class RAG:
             # Get relevant documents
             query_type = self._classify_query(question.lower())
             project_name = self._extract_project_name(question)
-            docs = await self._get_relevant_documents(question, query_type, project_name)
+            docs = await self._get_relevant_documents(
+                question, query_type, project_name
+            )
 
             # Format context
-            context = self._format_project_response(docs) if project_name else self._format_general_response(docs)
+            context = (
+                self._format_project_response(docs)
+                if project_name
+                else self._format_general_response(docs)
+            )
 
             # Create messages
             messages = [
@@ -233,7 +248,7 @@ class RAG:
                     Question: {question}
 
                     Please provide a clear, specific answer focusing on the relevant details."""
-                    )
+                ),
             ]
 
             # Get response
@@ -257,7 +272,7 @@ class RAG:
             "location": "overview",
             "features": "amenities",
             "completion": "overview",
-            "general": "highlights"
+            "general": "highlights",
         }
         return mapping.get(query_type, "overview")
 
@@ -287,7 +302,7 @@ class RAG:
 
     def _is_better_metadata(self, new_metadata: dict, existing_metadata: dict) -> bool:
         """Compare metadata completeness"""
-        key_fields = ['location', 'price_sqft', 'roi', 'completion_year', 'type']
+        key_fields = ["location", "price_sqft", "roi", "completion_year", "type"]
         new_count = sum(1 for k in key_fields if new_metadata.get(k))
         existing_count = sum(1 for k in key_fields if existing_metadata.get(k))
         return new_count > existing_count
@@ -299,7 +314,7 @@ class RAG:
             "elements residencia": "Elements Residencia",
             "globe residency": "Globe Residency Apartments",
             "broad peak": "Broad Peak Realty",
-            "akron": "Akron"
+            "akron": "Akron",
         }
 
         if not query:
@@ -318,18 +333,21 @@ class RAG:
             "elements residencia": "Elements Residencia",
             "globe residency": "Globe Residency Apartments",
             "broad peak": "Broad Peak Realty",
-            "akron": "Akron"
+            "akron": "Akron",
         }
 
     async def generate_questions(self, context: str) -> list[str]:
         try:
             prompt = f"Based on the following context, generate a list of relevant questions:\n\nContext: {context}\n\nQuestions:"
             response = await self.llm.agenerate(prompt)  # Pass the prompt as a string
-            questions = response.generations[0][0].text.strip().split('\n')
+            questions = response.generations[0][0].text.strip().split("\n")
             return [q.strip() for q in questions if q.strip()]
         except openai.error.APIConnectionError as e:
             logger.error(f"OpenAI API connection error: {str(e)}", exc_info=True)
-            raise HTTPException(status_code=500, detail="OpenAI API connection error. Please try again later.")
+            raise HTTPException(
+                status_code=500,
+                detail="OpenAI API connection error. Please try again later.",
+            )
         except Exception as e:
             logger.error(f"Error in generate_questions method: {str(e)}", exc_info=True)
             raise
@@ -337,29 +355,31 @@ class RAG:
     def _format_markdown(self, text: str) -> str:
         """Ensure consistent markdown formatting while preserving tables"""
         # Split text into sections (tables and non-tables)
-        sections = re.split(r'(\|.*\|.*(?:\r?\n\|.*\|.*)*)', text)
-        
+        sections = re.split(r"(\|.*\|.*(?:\r?\n\|.*\|.*)*)", text)
+
         formatted_sections = []
         for section in sections:
             # If this is a table section, preserve it exactly
-            if section.strip().startswith('|') and section.strip().endswith('|'):
+            if section.strip().startswith("|") and section.strip().endswith("|"):
                 formatted_sections.append(section)
             else:
                 # Apply formatting to non-table sections
                 formatted = section
                 # Fix bullet points
-                formatted = re.sub(r'(?m)^[•*+-]\s+', '- ', formatted)
+                formatted = re.sub(r"(?m)^[•*+-]\s+", "- ", formatted)
                 # Fix headings (ensure space after #)
-                formatted = re.sub(r'(?m)^(#{1,6})([^ #])', r'\1 \2', formatted)
+                formatted = re.sub(r"(?m)^(#{1,6})([^ #])", r"\1 \2", formatted)
                 # Fix bold text (ensure consistent ** usage)
-                formatted = re.sub(r'(?<!\*)\*(?!\*)(.*?)(?<!\*)\*(?!\*)', r'**\1**', formatted)
+                formatted = re.sub(
+                    r"(?<!\*)\*(?!\*)(.*?)(?<!\*)\*(?!\*)", r"**\1**", formatted
+                )
                 # Fix lists (ensure proper spacing)
-                formatted = re.sub(r'(?m)^(\d+\.)\s*', r'\1 ', formatted)
+                formatted = re.sub(r"(?m)^(\d+\.)\s*", r"\1 ", formatted)
                 # Fix line breaks (ensure consistent spacing)
-                formatted = re.sub(r'\n{3,}', '\n\n', formatted)
+                formatted = re.sub(r"\n{3,}", "\n\n", formatted)
                 formatted_sections.append(formatted)
-        
-        return ''.join(formatted_sections).strip()
+
+        return "".join(formatted_sections).strip()
 
     @ChatMonitoring.track_request
     async def stream_query(self, question: str, session_id: str):
@@ -387,30 +407,14 @@ class RAG:
                 # Create and return the async generator
                 async def response_generator():
                     collected_response = []
-                    current_chunk = ""
-                    
                     try:
                         async for chunk in self.streaming_llm.astream(messages):
                             if hasattr(chunk, 'content') and chunk.content:
                                 if isinstance(chunk.content, str) and chunk.content.strip():
-                                    current_chunk += chunk.content
-                                    
-                                    # Process complete blocks (sentence, table row, or line break)
-                                    if re.search(r'[.!?]\s*$', chunk.content) or \
-                                       re.search(r'\|\s*$', chunk.content) or \
-                                       re.search(r'\n\s*$', chunk.content):
-                                        formatted_chunk = self._format_markdown(current_chunk)
-                                        collected_response.append(formatted_chunk)
-                                        yield formatted_chunk
-                                        current_chunk = ""
+                                    collected_response.append(chunk.content)
+                                    yield chunk.content
                                 else:
                                     logger.warning(f"Invalid chunk content: {chunk.content}")
-                        
-                        # Process any remaining content
-                        if current_chunk:
-                            formatted_chunk = self._format_markdown(current_chunk)
-                            collected_response.append(formatted_chunk)
-                            yield formatted_chunk
 
                         # If no valid response was collected
                         if not collected_response:
@@ -442,7 +446,7 @@ class RAG:
         docs = await self._get_relevant_documents(question, self._classify_query(question.lower()))
         
         # Format context from relevant documents
-        context = "\n\n".join(f"- {doc.page_content}" for doc in docs)
+        context = "\n\n".join(f"{doc.page_content}" for doc in docs)
         
         # Include only recent conversation history (last 2 turns)
         recent_messages = memory.chat_memory.messages[-4:] if memory.chat_memory.messages else []
@@ -458,10 +462,12 @@ Question: {question}
 Please provide a clear, specific answer focusing on the relevant details.""")
         ]
 
-    async def _update_conversation_history(self, session_id, question, collected_response, memory):
+    async def _update_conversation_history(
+        self, session_id, question, collected_response, memory
+    ):
         """Update conversation history and database"""
         if collected_response:
-            full_response = ''.join(collected_response)
+            full_response = "".join(collected_response)
             memory.chat_memory.add_user_message(question)
             memory.chat_memory.add_ai_message(full_response)
 
@@ -516,7 +522,9 @@ Please provide a clear, specific answer focusing on the relevant details.""")
             try:
                 self.active_sessions.discard(session_id)
                 if session_id in self.memory_pools:
-                    self.memory_pools[session_id].clear()  # Clear memory before removing
+                    self.memory_pools[
+                        session_id
+                    ].clear()  # Clear memory before removing
                     self.memory_pools.pop(session_id, None)
                 self.last_access.pop(session_id, None)
                 logger.info(f"Removed session from memory: {session_id}")
@@ -528,54 +536,61 @@ Please provide a clear, specific answer focusing on the relevant details.""")
         metadata = {}
 
         # Extract project name
-        project_matches = re.search(r'(?:project|title):\s*([^\n]+)', text, re.I)
+        project_matches = re.search(r"(?:project|title):\s*([^\n]+)", text, re.I)
         if project_matches:
-            metadata['project'] = project_matches.group(1).strip()
+            metadata["project"] = project_matches.group(1).strip()
 
         # Extract location
-        location_matches = re.search(r'location:\s*([^\n]+)', text, re.I)
+        location_matches = re.search(r"location:\s*([^\n]+)", text, re.I)
         if location_matches:
-            metadata['location'] = location_matches.group(1).strip()
+            metadata["location"] = location_matches.group(1).strip()
 
         # Extract price
-        price_matches = re.search(r'(?:price|cost):\s*(?:PKR|Rs\.?)?\s*([\d,]+)', text, re.I)
+        price_matches = re.search(
+            r"(?:price|cost):\s*(?:PKR|Rs\.?)?\s*([\d,]+)", text, re.I
+        )
         if price_matches:
-            metadata['price'] = price_matches.group(1).strip()
+            metadata["price"] = price_matches.group(1).strip()
 
         # Extract ROI
-        roi_matches = re.search(r'(?:ROI|return|yield):\s*([\d.]+%)', text, re.I)
+        roi_matches = re.search(r"(?:ROI|return|yield):\s*([\d.]+%)", text, re.I)
         if roi_matches:
-            metadata['roi'] = roi_matches.group(1).strip()
+            metadata["roi"] = roi_matches.group(1).strip()
 
         # Extract completion date
-        completion_matches = re.search(r'(?:completion|timeline):\s*(\d{4})', text, re.I)
+        completion_matches = re.search(
+            r"(?:completion|timeline):\s*(\d{4})", text, re.I
+        )
         if completion_matches:
-            metadata['completion'] = completion_matches.group(1).strip()
+            metadata["completion"] = completion_matches.group(1).strip()
 
         # Extract project type
-        type_matches = re.search(r'type:\s*([^\n]+)', text, re.I)
+        type_matches = re.search(r"type:\s*([^\n]+)", text, re.I)
         if type_matches:
-            metadata['type'] = type_matches.group(1).strip()
+            metadata["type"] = type_matches.group(1).strip()
 
         # Extract features
-        features_section = re.search(r'features:(.*?)(?:\n\w+:|$)', text, re.I | re.S)
+        features_section = re.search(r"features:(.*?)(?:\n\w+:|$)", text, re.I | re.S)
         if features_section:
-            features = re.findall(r'[-•]\s*([^\n]+)', features_section.group(1))
-            metadata['features'] = ', '.join(features) if features else None
+            features = re.findall(r"[-•]\s*([^\n]+)", features_section.group(1))
+            metadata["features"] = ", ".join(features) if features else None
 
         return metadata
 
     def _classify_query(self, query: str) -> str:
         """Classify query type for optimized retrieval"""
-        if any(word in query for word in ['overview', 'all projects', 'summary', 'list', 'details']):
+        if any(
+            word in query
+            for word in ["overview", "all projects", "summary", "list", "details"]
+        ):
             return "overview"
-        elif any(word in query for word in ['price', 'cost', 'sqft']):
+        elif any(word in query for word in ["price", "cost", "sqft"]):
             return "price"
-        elif any(word in query for word in ['location', 'where']):
+        elif any(word in query for word in ["location", "where"]):
             return "location"
-        elif any(word in query for word in ['roi', 'return', 'yield']):
+        elif any(word in query for word in ["roi", "return", "yield"]):
             return "roi"
-        elif any(word in query for word in ['complete', 'finish', 'when']):
+        elif any(word in query for word in ["complete", "finish", "when"]):
             return "completion"
         return "general"
 
@@ -584,24 +599,21 @@ Please provide a clear, specific answer focusing on the relevant details.""")
         if session_id not in self.memory_pools:
             logger.info(f"Creating new memory for session: {session_id}")
             memory = ConversationBufferMemory(
-                memory_key="chat_history",
-                return_messages=True,
-                output_key="answer"
+                memory_key="chat_history", return_messages=True, output_key="answer"
             )
             memory.clear()
             self.memory_pools[session_id] = memory
             self.last_access[session_id] = datetime.now().timestamp()
-        
+
         return self.memory_pools[session_id]
 
-    async def _get_relevant_documents(self, question: str, query_type: str) -> List[Document]:
+    async def _get_relevant_documents(
+        self, question: str, query_type: str
+    ) -> List[Document]:
         """Get relevant documents with caching"""
         try:
             logger.info(f"Searching for query: {question}")
-            docs = self.vectordb.similarity_search(
-                question,
-                k=4  # Get top 4 results
-            )
+            docs = self.vectordb.similarity_search(question, k=4)  # Get top 4 results
             logger.info(f"Found {len(docs)} relevant documents")
             return docs
         except Exception as e:
@@ -613,42 +625,45 @@ Please provide a clear, specific answer focusing on the relevant details.""")
         async with self._session_lock:
             if session_id is None:
                 session_id = str(uuid.uuid4())
-            
+
             # Create fresh memory for new session
             memory = ConversationBufferMemory(
-                memory_key="chat_history",
-                return_messages=True,
-                output_key="answer"
+                memory_key="chat_history", return_messages=True, output_key="answer"
             )
             memory.clear()  # Ensure memory is empty
-            
+
             # Add to active sessions
             self.active_sessions.add(session_id)
             self.memory_pools[session_id] = memory
             self.last_access[session_id] = datetime.now().timestamp()
-            
+
             logger.info(f"Created new session with clean memory: {session_id}")
             return session_id
+
 
 # Create an instance of the RAG class with database session
 def get_rag_instance():
     return RAG()  # No need to pass db_session anymore
 
+
 rag_instance = get_rag_instance()
+
 
 # Define the functions to be used in routes
 async def create_chat_session() -> str:
     """Create a new chat session"""
     return await rag_instance.create_session()
 
+
 async def ask_question(question: str, session_id: str):
     """Handle questions with session validation"""
     if session_id not in rag_instance.active_sessions:
         yield "Session expired. Please start a new conversation."
         return
-        
+
     async for chunk in rag_instance.stream_query(question, session_id):
         yield chunk
+
 
 async def suggest_questions(context: str) -> list[str]:
     return await rag_instance.generate_questions(context)
