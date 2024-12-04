@@ -335,27 +335,31 @@ class RAG:
             raise
 
     def _format_markdown(self, text: str) -> str:
-        """Ensure consistent markdown formatting"""
-        # Fix bullet points
-        text = re.sub(r'(?m)^[•*+-]\s+', '- ', text)
+        """Ensure consistent markdown formatting while preserving tables"""
+        # Split text into sections (tables and non-tables)
+        sections = re.split(r'(\|.*\|.*(?:\r?\n\|.*\|.*)*)', text)
         
-        # Fix headings (ensure space after #)
-        text = re.sub(r'(?m)^(#{1,6})([^ #])', r'\1 \2', text)
+        formatted_sections = []
+        for section in sections:
+            # If this is a table section, preserve it exactly
+            if section.strip().startswith('|') and section.strip().endswith('|'):
+                formatted_sections.append(section)
+            else:
+                # Apply formatting to non-table sections
+                formatted = section
+                # Fix bullet points
+                formatted = re.sub(r'(?m)^[•*+-]\s+', '- ', formatted)
+                # Fix headings (ensure space after #)
+                formatted = re.sub(r'(?m)^(#{1,6})([^ #])', r'\1 \2', formatted)
+                # Fix bold text (ensure consistent ** usage)
+                formatted = re.sub(r'(?<!\*)\*(?!\*)(.*?)(?<!\*)\*(?!\*)', r'**\1**', formatted)
+                # Fix lists (ensure proper spacing)
+                formatted = re.sub(r'(?m)^(\d+\.)\s*', r'\1 ', formatted)
+                # Fix line breaks (ensure consistent spacing)
+                formatted = re.sub(r'\n{3,}', '\n\n', formatted)
+                formatted_sections.append(formatted)
         
-        # Fix bold text (ensure consistent ** usage)
-        text = re.sub(r'(?<!\*)\*(?!\*)(.*?)(?<!\*)\*(?!\*)', r'**\1**', text)
-        text = re.sub(r'_{1,2}(.*?)_{1,2}', r'**\1**', text)
-        
-        # Fix lists (ensure proper spacing)
-        text = re.sub(r'(?m)^(\d+\.)\s*', r'\1 ', text)
-        
-        # Fix code blocks (ensure proper spacing)
-        text = re.sub(r'`([^`]+)`', r'` \1 `', text)
-        
-        # Fix line breaks (ensure consistent spacing)
-        text = re.sub(r'\n{3,}', '\n\n', text)
-        
-        return text.strip()
+        return ''.join(formatted_sections).strip()
 
     @ChatMonitoring.track_request
     async def stream_query(self, question: str, session_id: str):
@@ -391,8 +395,9 @@ class RAG:
                                 if isinstance(chunk.content, str) and chunk.content.strip():
                                     current_chunk += chunk.content
                                     
-                                    # Process complete sentences or markdown blocks
+                                    # Process complete blocks (sentence, table row, or line break)
                                     if re.search(r'[.!?]\s*$', chunk.content) or \
+                                       re.search(r'\|\s*$', chunk.content) or \
                                        re.search(r'\n\s*$', chunk.content):
                                         formatted_chunk = self._format_markdown(current_chunk)
                                         collected_response.append(formatted_chunk)

@@ -111,19 +111,19 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
           className="markdown-content"
           components={{
             p: ({ node, ...props }) => (
-              <p {...props} className="mb-4 text-sm sm:text-base leading-relaxed whitespace-pre-wrap break-words" />
+              <p {...props} className="mb-4 text-sm sm:text-base leading-relaxed whitespace-pre-wrap break-words last:mb-0" />
             ),
             a: ({ node, ...props }) => (
               <a {...props} className="text-blue-500 hover:underline break-words" target="_blank" rel="noopener noreferrer" />
             ),
             ul: ({ node, ...props }) => (
-              <ul {...props} className="list-disc pl-8 mb-4 space-y-2" />
+              <ul {...props} className="list-disc pl-6 mb-4 space-y-2 last:mb-0" />
             ),
             ol: ({ node, ...props }) => (
-              <ol {...props} className="list-decimal pl-8 mb-4 space-y-2" />
+              <ol {...props} className="list-decimal pl-6 mb-4 space-y-2 last:mb-0" />
             ),
             li: ({ node, ...props }) => (
-              <li {...props} className={`pl-1 text-sm sm:text-base leading-relaxed marker:text-gray-500 ${isDarkMode ? "text-white marker:text-gray-400" : "text-black"}`} />
+              <li {...props} className={`pl-1 text-sm sm:text-base leading-relaxed ${isDarkMode ? "text-white" : "text-black"}`} />
             ),
             strong: ({ node, ...props }) => (
               <strong {...props} className={`font-bold ${isDarkMode ? "text-white" : "text-black"}`} />
@@ -155,7 +155,7 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
               <div className="w-full overflow-x-auto mb-4 -mx-2 sm:mx-0">
                 <div className="inline-block min-w-full align-middle p-2">
                   <div className="overflow-hidden border border-gray-200 dark:border-gray-700 rounded-lg">
-                    <table {...props} className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" />
+                    <table {...props} className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto" />
                   </div>
                 </div>
               </div>
@@ -166,7 +166,7 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
             th: ({ node, ...props }) => (
               <th 
                 {...props} 
-                className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider border-r last:border-r-0 ${
+                className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${
                   isDarkMode ? "bg-gray-800 text-gray-300 border-gray-700" : "bg-gray-50 text-gray-700 border-gray-200"
                 }`}
               />
@@ -174,7 +174,7 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
             td: ({ node, ...props }) => (
               <td 
                 {...props} 
-                className={`px-4 py-3 text-sm border-t border-r last:border-r-0 ${
+                className={`px-4 py-3 text-sm whitespace-nowrap ${
                   isDarkMode ? "bg-gray-800 text-gray-300 border-gray-700" : "bg-white text-gray-700 border-gray-200"
                 }`}
               />
@@ -182,7 +182,7 @@ const MessageComponent: React.FC<MessageComponentProps> = ({ message, isDarkMode
             blockquote: ({ node, ...props }) => (
               <blockquote {...props} className={`border-l-4 pl-4 italic my-4 ${
                 isDarkMode ? "border-gray-600 text-gray-300" : "border-gray-300 text-gray-700"
-              }`} />
+              } last:mb-0`} />
             )
           }}
         >
